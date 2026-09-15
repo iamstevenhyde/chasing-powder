@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chasing Powder | Instructor Console</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:    #e5edf0;
+    --panel:    #eff5f7;
+    --card:     #ffffff;
+    --border:   #cdd9dc;
+    --border-hi:#a9791f;
+    --ink:      #19262f;
+    --muted:    #53626d;
+    --rust:     #c8552b;
+    --teal:     #25666f;
+    --gold:     #a9791f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--paper); color: var(--ink); min-height: 100vh;
+  }
+  h1, h2, .debrief-title, .dash-title { font-family: 'Fraunces', Georgia, serif; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; }
+  header {
+    background: var(--ink); color: var(--paper); padding: 1rem 2rem;
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.3rem; letter-spacing: 0.03em; font-weight: 700; }
+  header .badge {
+    font-size: 0.72rem; background: var(--rust); color: #fff; padding: 0.2rem 0.55rem;
+    border-radius: 3px; font-family: 'JetBrains Mono', monospace;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem; }
+  section { margin-bottom: 2rem; }
+  h2 {
+    font-size: 1.02rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--rust);
+    border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; margin-bottom: 1rem; font-weight: 700;
+  }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.5rem; }
+  .row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  button {
+    background: var(--rust); color: #fff; border: none; padding: 0.55rem 1.1rem; border-radius: 5px;
+    font-family: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer;
+  }
+  button:hover { background: #a8451f; }
+  button:disabled { background: #b7bfc2; cursor: default; }
+  button.secondary { background: var(--teal); }
+  button.secondary:hover { background: #1e535a; }
+  .code { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; letter-spacing: 0.2em; color: var(--rust); font-weight: 700; }
+  .status { font-size: 0.82rem; color: var(--muted); font-style: italic; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th { background: var(--ink); color: var(--paper); text-align: left; padding: 0.45rem 0.6rem; font-weight: 700; }
+  td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .tag { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 3px; font-size: 0.74rem; font-family: 'JetBrains Mono', monospace; }
+  .tag-ai       { background: #e4edf5; color: var(--teal); }
+  .tag-human    { background: #e7f3ea; color: #1a7a4a; }
+  .tag-ready    { background: #e7f3ea; color: #1a7a4a; }
+  .tag-waiting  { background: #f7ecd8; color: var(--gold); }
+  .tag-autolock { background: #fbe4dc; color: var(--rust); }
+  .ready-summary {
+    display: inline-block; font-size: 0.92rem; font-weight: 700; padding: 0.3rem 0.8rem;
+    border-radius: 4px; margin-bottom: 0.8rem; background: var(--panel); color: var(--muted);
+  }
+  .ready-summary.all-ready { background: #e7f3ea; color: #1a7a4a; }
+  #msg { padding: 0.55rem 1rem; border-radius: 5px; margin-top: 0.5rem; font-size: 0.85rem; display: none; }
+  #msg.ok  { background: #e7f3ea; color: #1a7a4a; display: block; }
+  #msg.err { background: #fbe4dc; color: var(--rust); display: block; }
+  .phase-chip {
+    display: inline-block; padding: 0.2rem 0.7rem; border-radius: 12px; font-size: 0.8rem;
+    background: var(--teal); color: #fff; font-family: 'JetBrains Mono', monospace;
+  }
+  .clock-box { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.9rem; }
+  .clock-display {
+    font-family: 'JetBrains Mono', monospace; font-size: 2.6rem; font-weight: 700; color: var(--ink);
+    letter-spacing: 0.05em; min-width: 4ch;
+  }
+  .clock-display.clock-warn    { color: var(--rust); }
+  .clock-display.clock-expired { color: var(--rust); }
+  input[type=number].minutes-input {
+    width: 5rem; padding: 0.35rem 0.5rem; font-family: inherit; font-size: 0.9rem;
+    border: 1px solid var(--border); border-radius: 4px;
+  }
+  /* ---- Live instructor dashboard, projector legible ---- */
+  .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 760px) { .dash-grid { grid-template-columns: 1fr; } }
+  .dash-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; }
+  .dash-title { font-size: 1.05rem; font-weight: 700; color: var(--teal); margin-bottom: 0.5rem; }
+  .dash-table { font-size: 1rem; }
+  .dash-table th { font-size: 0.72rem; }
+  .dash-ok  { color: #1a7a4a; font-weight: 700; }
+  .dash-bad { color: var(--rust); font-weight: 700; }
+  /* ---- Debrief (end of game, projector) ---- */
+  #secDebrief main, #secDebrief { max-width: none; }
+  .debrief-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.4rem 1.6rem; margin-bottom: 1.6rem; }
+  .debrief-title { font-size: 1.2rem; font-weight: 700; color: var(--rust); margin-bottom: 0.4rem; }
+  .debrief-note { font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.5; }
+  table.debrief-table { width: 100%; border-collapse: collapse; font-size: 1.05rem; }
+  table.debrief-table th {
+    background: var(--ink); color: var(--paper); text-align: center; padding: 0.5rem 0.7rem;
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  table.debrief-table th:first-child, table.debrief-table td:first-child { text-align: left; }
+  table.debrief-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); text-align: center; font-family: 'JetBrains Mono', monospace; }
+  table.debrief-table tr.debrief-rank1 td { background: #f7ecd8; font-weight: 700; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chasing Powder</h1>
+  <span class="badge">Instructor Console</span>
+  <span id="phaseChip" class="phase-chip" style="margin-left:auto">lobby</span>
+</header>
+<main>
+  <div id="msg"></div>
+
+  <!-- Create Game -->
+  <section id="secCreate">
+    <h2>Create Game</h2>
+    <div class="card">
+      <div class="row">
+        <button id="btnCreate" onclick="createGame()">Create New Game</button>
+        <span class="status">Draws the season's hidden world and generates a 5-letter join code.</span>
+      </div>
+      <div class="row" style="margin-top:0.6rem">
+        <button id="btnResume" onclick="resumeGame()" class="secondary">Resume Last Game</button>
+        <span class="status">Reloads the most recent game so a page refresh does not lose it.</span>
+      </div>
+      <div id="joinCodeBox" style="display:none">
+        Join code: <span class="code" id="joinCodeDisplay"></span>
+        <div class="status" style="margin-top:0.4rem">Share this code with students. They open team.html and enter it.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lobby -->
+  <section id="secLobby" style="display:none">
+    <h2>Lobby <span id="teamCountBadge" style="font-size:0.8rem;color:var(--muted);font-weight:normal"></span></h2>
+    <div class="card">
+      <p class="status" style="margin-bottom:0.7rem">Ten seats, always. Eight team seats start identical; Vail
+        and Alta hold their own real starting positions and never open to a team.</p>
+      <table id="tblSeats">
+        <thead><tr><th>Seat</th><th>Resort</th><th>Note</th></tr></thead>
+        <tbody id="tbodySeats"></tbody>
+      </table>
+      <div class="row" style="margin-top:1rem">
+        <button id="btnStart" onclick="startGame()" disabled>Start Game</button>
+        <span class="status">Requires at least one human team. Every open team seat is filled by AI; Vail and Alta join automatically.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Board -->
+  <section id="secBoard" style="display:none">
+    <h2>Season in Progress <span id="boardSeason" style="font-size:0.8rem;color:var(--muted);font-weight:normal"></span></h2>
+    <div class="card">
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.8rem">
+        Teams set spend, price, the capacity dial and an optional bet, then submit a stage guess and lock in.
+        AI seats, including Vail and Alta, have already decided. Resolve the season when teams are ready.
+      </p>
+      <div class="clock-box">
+        <div>
+          <div class="status" style="margin-bottom:0.2rem">Minutes this season (defaults: season 1 = 8, then 5; edit to adjust)</div>
+          <input type="number" id="clockMinutes" class="minutes-input" min="0" step="0.5" placeholder="off">
+          <button id="btnStartClock" onclick="startClock()" style="margin-left:0.4rem">Start clock</button>
+          <button id="btnStopClock" onclick="stopClock()" class="secondary" style="margin-left:0.2rem;display:none">Stop clock</button>
+        </div>
+        <div id="clockDisplay" class="clock-display" style="display:none">--:--</div>
+      </div>
+      <div id="boardReadySummary" class="ready-summary">Teams ready: 0 / 0</div>
+      <table id="tblBoard">
+        <thead><tr><th>Seat</th><th>Resort</th><th>Type</th><th>Status</th></tr></thead>
+        <tbody id="tbodyBoard"></tbody>
+      </table>
+      <div class="row" style="margin-top:1rem">
+        <button id="btnResolve" onclick="resolveSeason()" disabled>Resolve Season</button>
+        <span class="status" id="boardStatus"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Live instructor dashboard, projector view, refreshed with the board -->
+  <section id="secDashboard" style="display:none">
+    <h2>Room Read</h2>
+    <p class="debrief-note" style="margin-bottom:1rem">Stage read updates as teams submit this season. Price war,
+      cash and crowding reflect the most recently resolved season, since those numbers do not exist until a
+      season actually runs.</p>
+    <div id="dashPanels"></div>
+  </section>
+
+  <!-- Debrief (projector, end of game) -->
+  <section id="secDebrief" style="display:none">
+    <h2>End-of-Game Debrief</h2>
+
+    <div class="debrief-card">
+      <div class="debrief-title">1. Stage-Read Scorecard</div>
+      <div class="debrief-note">Each team's guessed industry stage against the hidden true stage, season by
+        season. The true stage is derived from the game's own segment lifecycle, not a fixed season number, so a
+        fast- or slow-moving world gets its own read. This was never shown to teams during play.</div>
+      <div id="debriefStageTable"></div>
+    </div>
+
+    <div class="debrief-card">
+      <div class="debrief-title">2. Intended vs Realized Movement</div>
+      <div class="debrief-note">Where a team aimed its levers each season versus where it actually landed, summed
+        across the game. Movement lands short of intent when the market it is chasing is thin, or when rivals are
+        already crowding the same ground; it never lands past intent. A big shortfall is the imperfect-movement
+        lesson made visible: aiming does not guarantee arriving.</div>
+      <div id="debriefMoveTable"></div>
+    </div>
+
+    <div class="debrief-card">
+      <div class="debrief-title">3. Final Standings</div>
+      <div class="debrief-note">Score is the engine's own terminal measure: this season's profit plus the value
+        of the position and reputation held at the end. Vail and Alta are shown for comparison, tagged as the
+        permanent AI rivals they are.</div>
+      <div id="debriefStandingsTable"></div>
+    </div>
+  </section>
+</main>
+
+<!-- supabase-js v2 UMD from jsdelivr, pinned, same tag as the ranch console -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
+<script src="config.js?v=d9a9a8b126"></script>
+<script src="engine-powder.js?v=89a1a6200d"></script>
+<script src="recap.js?v=779a527f5f"></script>
+<script>
+'use strict';
+
+// ==========================================================================
+// Chasing Powder, instructor console.
+//
+// ASSUMPTIONS FOR REVIEW (none of these are fixed by editing this file; it
+// owns admin.html only):
+//
+// 1. chasing-powder.js (edited live by another writer during this build)
+//    landed TEAM_SEATS, RIVALS and classroomField() partway through this
+//    session, plus a real 'NEUTRAL' decide() policy and a NEUTRAL entry on
+//    POS_SEED3, all matching the field-of-10 design below almost exactly.
+//    This file reads those from window.PowderEngine when present and falls
+//    back to a local copy of the same shape otherwise (see the constants
+//    just below), because the BROWSER build, engine-powder.js, was
+//    regenerated at 22:13 and chasing-powder.js kept changing after that;
+//    as of this write engine-powder.js does not yet export TEAM_SEATS,
+//    RIVALS or classroomField. Run `node make-engine.js` in powder/ (owned
+//    by another writer, not this file) before relying on the live values.
+//    Regardless of which path is used, every team seat (0-7) always gets a
+//    decision through PowderEngine.applyDecision(), never through decide(),
+//    whether the seat is human, AI-filled, or auto-locked; only seats 8 and
+//    9 (Vail = NETWORK, Alta = FORTRESS) ever run decide(). That was true
+//    before this landed and stays true after, so the regen timing does not
+//    change how this console behaves, only whether its seat/name constants
+//    come from the engine or from the fallback copy.
+// 2. RESOLVED 2026-09-10. This file no longer defines any policy of its own.
+//    AI-filled and auto-locked seats are left out of decisionsBySeat, so the
+//    engine's own NEUTRAL branch resolves them, and what it chose is written
+//    to the decision log afterwards by decisionActuallyTaken(). The earlier
+//    local copy had already drifted from the engine (dial 8 against 9, price
+//    0.65 against 0.60), which is the same two-copies-of-the-economics problem
+//    that the engine fork caused in this project once before.
+// 3. BASE_MARKET and the other balance constants were tuned for a 6-firm
+//    field as of POWDER-BALANCE-FINDINGS.md (2026-09-10); whether the other
+//    writer's field-of-10 landing already includes a retune was not
+//    reread from chasing-powder.js's gate report before this file shipped.
+//    Confirm `node chasing-powder.js` prints G8/G9/G10 PASS at field size 10
+//    before trusting scores in front of a class.
+// 4. The engine's rng/trng generators are closures and cannot be written to
+//    a jsonb column, so this console keeps the live game state (GAME_STATE)
+//    in memory for the lifetime of the browser tab. A refresh mid-game
+//    rebuilds it deterministically by replaying every already-resolved
+//    season's recorded decisions back through stepSeason (see
+//    rebuildGameState()), which is sound because the engine is seeded and
+//    decision-driven (proved by powder/decision-test.js and
+//    powder/replay-test.js), not because state is persisted directly.
+// 5. `crowdedBy` on each engine_result row, and the Crowded Segments dashboard
+//    panel, are this file's own nearest-rival distance calculation, not a
+//    field the engine exposes. The threshold is a guess, not a tuned value.
+// 6. RESOLVED 2026-09-10: the hidden true stage is no longer written to the
+//    database at all. Only the env draw is stored and the trace is re-derived
+//    locally by trueStageTrace(). Residual risk: a student with the engine
+//    could re-derive it from the stored env draw, which is a far higher bar
+//    than reading an array out of a public row.
+// 6b. The rest of games.world is read
+//    by anyone holding the anon key, same as every other powder_ column
+//    (schema-powder.sql's RLS is permissive by design for the classroom
+//    MVP). This file never renders trueStageTrace anywhere a team would see
+//    it, but it cannot stop a browser's network tab from reading the raw
+//    row. Hiding it at the data layer is a schema/RLS change outside this
+//    file's ownership.
+// ==========================================================================
+
+const supa = supabase.createClient(window.SUPA_URL, window.SUPA_ANON_KEY);
+
+// ---- The fixed 10-firm field (Steven's decision, see the multiplayer plan) ----
+// Prefers the engine's own field-of-10 definition (TEAM_SEATS/RIVALS/classroomField) when
+// window.PowderEngine exports it; falls back to a local copy of the same shape otherwise.
+// See assumption 1 at the top of this file for why both paths currently exist.
+const TEAM_SEATS = (window.PowderEngine && PowderEngine.TEAM_SEATS) || 8;   // seat_index 0..TEAM_SEATS-1: identical team seats
+const RIVALS = (window.PowderEngine && PowderEngine.RIVALS) || [
+  { arch: 'NETWORK', name: 'Vail' },
+  { arch: 'FORTRESS', name: 'Alta' },
+];
+const SEAT_COUNT = TEAM_SEATS + RIVALS.length;
+const VAIL_SEAT  = TEAM_SEATS;       // first rival seat, by RIVALS order
+const ALTA_SEAT  = TEAM_SEATS + 1;   // second rival seat, by RIVALS order
+const SEAT_ARCH  = (window.PowderEngine && typeof PowderEngine.classroomField === 'function')
+  ? PowderEngine.classroomField()
+  : Array(TEAM_SEATS).fill('NEUTRAL').concat(RIVALS.map(r => r.arch));
+const FIXED_NAME = {};
+RIVALS.forEach((r, i) => { FIXED_NAME[TEAM_SEATS + i] = r.name; });
+const AI_NAMES = [
+  'Powderhorn Basin', 'Tamarack Notch', 'Silver Fork', 'Juniper Pass',
+  'Cinder Ridge', 'Wolf Creek Flat', 'Birch Hollow', 'Cloudsplitter',
+];
+
+let GAME_ID  = null;
+let JOIN_CODE = null;
+let WORLD    = null;   // games.world: {seed, growthScale, chasmScale, inflection, segTrace}
+// The hidden true stage is never stored, only derived here, instructor side, on demand.
+function trueStageTrace() {
+  if (!WORLD || !window.PowderEngine || !PowderEngine.trueStageArray) return [];
+  return PowderEngine.trueStageArray({
+    growthScale: WORLD.growthScale, chasmScale: WORLD.chasmScale, inflection: WORLD.inflection,
+  });
+}
+let TEAMS    = [];     // powder_teams rows, one per seat_index 0-9
+let CUR_SEASON = 0;
+let GAME_STATE = null; // the live engine state (resorts + rng), in memory only; see assumption 4 above
+let starting = false;  // guards Start Game against double-invocation
+let resolving = false; // guards Resolve Season against double-invocation
+
+const POLL_MS = 4000;
+let pollTimer = null;
+
+// ---- Season clock (projector countdown + auto-lock at zero) ----
+let clockTimer = null;
+let clockEndsAt = null;
+let clockExpiredHandled = false;
+const CLOCK_MIN_SEASON0 = 8, CLOCK_MIN_OTHER = 5;
+
+function msg(text, type) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = type;
+}
+
+function randCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  return Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function setPhaseChip(phase) {
+  document.getElementById('phaseChip').textContent = phase;
+}
+function showSection(id) {
+  ['secCreate', 'secLobby', 'secBoard', 'secDashboard', 'secDebrief'].forEach(s => {
+    const elx = document.getElementById(s);
+    if (elx) elx.style.display = (s === id || id === null) ? '' : 'none';
+  });
+}
+
+// Reads back what the engine's own NEUTRAL policy actually chose for a seat this season.
+// There is deliberately no policy defined in this file any more. An earlier version kept a
+// local "reasonable defaults" object for AI-filled and auto-locked seats, and it had already
+// drifted from the engine's NEUTRAL branch (dial 8 against 9, price 0.65 against 0.60), which
+// is precisely how this game ended up with two disagreeing copies of its economics once before.
+// Unattended seats are now simply left out of decisionsBySeat so the engine decides them, and
+// this records what it chose afterwards so the decision log stays complete for the debrief.
+function decisionActuallyTaken(r) {
+  return {
+    spend: { runs: r._spendRuns, lodging: r._spendLodging, events: r._spendEvents, marketing: r._spendMkt },
+    price: { day: r.dayPassPrice, lodge: r.lodgingRate },
+    capacityDial: r._opsCost,
+    hire: r._hire,
+    buyBet: r._buyBet || null,
+    stageGuess: null,
+    rationale: '',
+  };
+}
+
+// ==========================================================================
+// ---- Create / Resume ----
+// ==========================================================================
+async function createGame() {
+  document.getElementById('btnCreate').disabled = true;
+  JOIN_CODE = randCode();
+  const seed = Math.floor(Math.random() * 900000000) + 100000000;
+  const envRaw = PowderEngine.envForGame(seed);
+  WORLD = {
+    seed, growthScale: envRaw.growthScale, chasmScale: envRaw.chasmScale,
+    // trueStageTrace is DELIBERATELY not stored. Under the classroom RLS any student with the
+    // anon key can read powder_games, and the stage read is a graded debrief instrument, so
+    // writing the answer key into a readable row would hand it over. Only the env draw is
+    // stored; the instructor re-derives the trace locally with trueStageArray(env).
+    inflection: envRaw.inflection, segTrace: [],
+  };
+  const { data, error } = await supa.from('powder_games').insert({
+    join_code: JOIN_CODE, status: 'lobby', phase: 'lobby', season: 0, world: WORLD,
+  }).select().single();
+  if (error) { msg('Error creating game: ' + error.message, 'err'); document.getElementById('btnCreate').disabled = false; return; }
+  GAME_ID = data.id;
+  CUR_SEASON = 0;
+
+  await logDecisionForSeasonNum(null, 0, 'game_created', { join_code: JOIN_CODE, seed });
+
+  document.getElementById('joinCodeDisplay').textContent = JOIN_CODE;
+  document.getElementById('joinCodeBox').style.display = '';
+  document.getElementById('secLobby').style.display = '';
+  msg('Game created. Join code: ' + JOIN_CODE, 'ok');
+  subscribeToTeams();
+  startPolling();
+  renderLobbySeats();
+}
+
+async function resumeGame() {
+  const { data, error } = await supa.from('powder_games').select('*').order('created_at', { ascending: false }).limit(1);
+  if (error) { msg('Resume failed: ' + error.message, 'err'); return; }
+  if (!data || !data.length) { msg('No game found to resume. Create one first.', 'err'); return; }
+  const g = data[0];
+  GAME_ID = g.id; JOIN_CODE = g.join_code; WORLD = g.world || {};
+  CUR_SEASON = g.season || 0;
+  document.getElementById('joinCodeDisplay').textContent = JOIN_CODE;
+  document.getElementById('joinCodeBox').style.display = '';
+  setPhaseChip(g.phase);
+  await refreshTeams();
+  subscribeToTeams();
+  startPolling();
+
+  if (g.phase === 'board' || g.phase === 'resolve') {
+    await rebuildGameState();
+    showSection('secBoard');
+    document.getElementById('secDashboard').style.display = '';
+    document.getElementById('btnResolve').disabled = false;
+    document.getElementById('boardSeason').textContent = seasonLabel();
+    prefillClock(CUR_SEASON);
+    await refreshBoard();
+  } else if (g.phase === 'ended') {
+    showSection('secDebrief');
+    await renderDebrief();
+  } else {
+    showSection('secLobby');
+    renderLobbySeats();
+  }
+  msg('Resumed game ' + JOIN_CODE + ' at phase: ' + g.phase + ' (season ' + (CUR_SEASON + 1) + ').', 'ok');
+}
+
+function seasonLabel() {
+  const total = (window.PowderEngine && PowderEngine.CONFIG.SEASONS) || 6;
+  return 'Season ' + (CUR_SEASON + 1) + ' of ' + total;
+}
+
+// Rebuilds the live engine state deterministically: fresh initGameState from the stored
+// seed and env, then every already-resolved season's recorded decisions replayed through
+// stepSeason in order. Sound because the engine is seeded and fully decision-driven (see
+// assumption 4 at the top of this file), not because any RNG state is itself persisted.
+async function rebuildGameState() {
+  const env = { growthScale: WORLD.growthScale, chasmScale: WORLD.chasmScale, inflection: WORLD.inflection };
+  GAME_STATE = PowderEngine.initGameState(SEAT_ARCH.slice(), WORLD.seed, env);
+  for (let s = 0; s < CUR_SEASON; s++) {
+    const decisionsBySeat = await decisionsForSeason(s);
+    PowderEngine.stepSeason(GAME_STATE, decisionsBySeat);
+  }
+}
+
+// ==========================================================================
+// ---- Lobby ----
+// ==========================================================================
+function subscribeToTeams() {
+  supa.channel('pteams-' + GAME_ID)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'powder_teams', filter: 'game_id=eq.' + GAME_ID }, () => refreshTeams())
+    .subscribe();
+}
+
+async function refreshTeams() {
+  if (!GAME_ID) return;
+  const { data } = await supa.from('powder_teams').select('*').eq('game_id', GAME_ID).order('seat_index');
+  TEAMS = data || [];
+  renderLobbySeats();
+}
+
+function renderLobbySeats() {
+  const tbody = document.getElementById('tbodySeats');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const bySeat = {};
+  TEAMS.forEach(t => { bySeat[t.seat_index] = t; });
+  for (let i = 0; i < SEAT_COUNT; i++) {
+    const t = bySeat[i];
+    const fixed = FIXED_NAME[i];
+    let nameCell, noteCell;
+    if (fixed) {
+      nameCell = esc(fixed) + ' <span class="tag tag-ai">permanent AI</span>';
+      const rival = RIVALS[i - TEAM_SEATS] || {};
+      noteCell = esc((rival.arch || '') + (rival.note ? ', ' + rival.note : ''));
+    } else if (t) {
+      nameCell = esc(t.name) + (t.is_ai ? ' <span class="tag tag-ai">AI</span>' : ' <span class="tag tag-human">Human</span>');
+      noteCell = t.is_ai ? 'filled by AI at start' : 'claimed';
+    } else {
+      nameCell = '<em>open</em>';
+      noteCell = 'filled by AI if unclaimed at Start Game';
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>Seat ${i + 1}</td><td>${nameCell}</td><td>${noteCell}</td>`;
+    tbody.appendChild(tr);
+  }
+  const humanCount = TEAMS.filter(t => !t.is_ai && t.seat_index < TEAM_SEATS).length;
+  document.getElementById('teamCountBadge').textContent = humanCount + ' human team' + (humanCount !== 1 ? 's' : '') + ' joined';
+  document.getElementById('btnStart').disabled = humanCount < 1;
+}
+
+async function startGame() {
+  if (starting) return;
+  starting = true;
+  document.getElementById('btnStart').disabled = true;
+  try {
+    // Re-read the roster at the moment of dealing, not the polled TEAMS list, so a team
+    // that joined in the last few seconds is not overwritten by an AI insert (same fix
+    // the ranch console applies at the equivalent point).
+    const { data: fresh } = await supa.from('powder_teams').select('*').eq('game_id', GAME_ID);
+    TEAMS = fresh || [];
+    const claimed = new Set(TEAMS.map(t => t.seat_index));
+    const inserts = [];
+    let nextName = 0;
+    for (let i = 0; i < TEAM_SEATS; i++) {
+      if (!claimed.has(i)) inserts.push({ game_id: GAME_ID, seat_index: i, name: AI_NAMES[nextName++ % AI_NAMES.length], is_ai: true, state: null });
+    }
+    if (!claimed.has(VAIL_SEAT)) inserts.push({ game_id: GAME_ID, seat_index: VAIL_SEAT, name: 'Vail', is_ai: true, state: null });
+    if (!claimed.has(ALTA_SEAT)) inserts.push({ game_id: GAME_ID, seat_index: ALTA_SEAT, name: 'Alta', is_ai: true, state: null });
+    if (inserts.length) {
+      const { error } = await supa.from('powder_teams').insert(inserts);
+      if (error) { msg('Error filling seats: ' + error.message, 'err'); return; }
+    }
+    await refreshTeams();
+
+    const env = { growthScale: WORLD.growthScale, chasmScale: WORLD.chasmScale, inflection: WORLD.inflection };
+    GAME_STATE = PowderEngine.initGameState(SEAT_ARCH.slice(), WORLD.seed, env);
+    CUR_SEASON = 0;
+    for (const t of TEAMS) {
+      const r = GAME_STATE.resorts[t.seat_index];
+      await supa.from('powder_teams').update({ state: JSON.parse(JSON.stringify(r)) }).eq('id', t.id);
+    }
+    await supa.from('powder_games').update({ status: 'active', phase: 'board', season: 0 }).eq('id', GAME_ID);
+    await logDecisionForSeasonNum(null, 0, 'phase_advanced', { from: 'lobby', to: 'board', season: 0 });
+
+    setPhaseChip('board');
+    document.getElementById('secLobby').style.display = 'none';
+    showSection('secBoard');
+    document.getElementById('secDashboard').style.display = '';
+    document.getElementById('btnResolve').disabled = false;
+    document.getElementById('boardSeason').textContent = seasonLabel();
+    prefillClock(0);
+    msg('Game started. Season 1 is open.', 'ok');
+    subscribeToDecisions();
+    startPolling();
+    await refreshBoard();
+  } finally {
+    starting = false;
+  }
+}
+
+// ==========================================================================
+// ---- Board / season clock ----
+// ==========================================================================
+function subscribeToDecisions() {
+  supa.channel('pdecs-' + GAME_ID + '-' + CUR_SEASON)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'powder_decisions', filter: 'game_id=eq.' + GAME_ID }, () => refreshBoard())
+    .subscribe();
+}
+
+function clockDefaultFor(season) { return season === 0 ? CLOCK_MIN_SEASON0 : CLOCK_MIN_OTHER; }
+function prefillClock(season) {
+  const el = document.getElementById('clockMinutes');
+  if (el) el.value = clockDefaultFor(season);
+  const btn = document.getElementById('btnStartClock');
+  if (btn) btn.textContent = 'Start clock (' + clockDefaultFor(season) + ' min)';
+}
+function startClock() {
+  const mins = Number(document.getElementById('clockMinutes').value);
+  if (!mins || mins <= 0) { msg('Enter minutes for this season (a number greater than 0) to start the clock.', 'err'); return; }
+  clockEndsAt = Date.now() + mins * 60000;
+  clockExpiredHandled = false;
+  document.getElementById('btnStartClock').textContent = 'Restart clock';
+  document.getElementById('btnStopClock').style.display = '';
+  document.getElementById('clockDisplay').style.display = '';
+  if (clockTimer) clearInterval(clockTimer);
+  clockTimer = setInterval(tickClock, 250);
+  tickClock();
+}
+function stopClock(silent) {
+  if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+  clockEndsAt = null;
+  clockExpiredHandled = false;
+  const disp = document.getElementById('clockDisplay');
+  if (disp) { disp.style.display = 'none'; disp.classList.remove('clock-warn', 'clock-expired'); }
+  const stopBtn = document.getElementById('btnStopClock');
+  if (stopBtn) stopBtn.style.display = 'none';
+  const startBtn = document.getElementById('btnStartClock');
+  if (startBtn) startBtn.textContent = 'Start clock';
+  if (!silent) msg('Clock stopped.', 'ok');
+}
+function tickClock() {
+  if (!clockEndsAt) return;
+  const disp = document.getElementById('clockDisplay');
+  if (!disp) return;
+  const msLeft = clockEndsAt - Date.now();
+  if (msLeft <= 0) {
+    disp.textContent = '0:00';
+    disp.classList.add('clock-expired');
+    disp.classList.remove('clock-warn');
+    if (!clockExpiredHandled) { clockExpiredHandled = true; autoLockExpiredTeams(); }
+    return;
+  }
+  const totalSec = Math.ceil(msLeft / 1000);
+  const m = Math.floor(totalSec / 60), s = totalSec % 60;
+  disp.textContent = m + ':' + String(s).padStart(2, '0');
+  disp.classList.toggle('clock-warn', msLeft <= 30000);
+}
+
+// At clock expiry, any human team seat without a season_submitted row this season gets
+// the neutral policy written as its decision, flagged auto_locked, rather than blocking
+// resolve. Resolve is still a manual instructor click.
+async function autoLockExpiredTeams() {
+  if (!GAME_ID) return;
+  const [{ data: teams }, { data: decs }] = await Promise.all([
+    supa.from('powder_teams').select('id, seat_index, is_ai').eq('game_id', GAME_ID),
+    supa.from('powder_decisions').select('team_id').eq('game_id', GAME_ID).eq('season', CUR_SEASON).eq('kind', 'season_submitted'),
+  ]);
+  const submitted = new Set((decs || []).map(d => d.team_id));
+  const toLock = (teams || []).filter(t => !t.is_ai && t.seat_index < TEAM_SEATS && !submitted.has(t.id));
+  for (const t of toLock) {
+    // Writes a MARKER, not a decision. If this wrote a season_submitted row it would be read
+    // back at resolve as a real team entry, which would reintroduce a second copy of the
+    // economics in this file. The seat is simply left unattended and the engine's own NEUTRAL
+    // policy resolves it; what it chose is logged afterwards.
+    await logDecisionForSeasonNum(t.id, CUR_SEASON, 'auto_locked', {
+      note: 'Auto-locked at clock expiry: no team entry, resolved by the engine default.',
+    });
+  }
+  await refreshBoard();
+  msg(toLock.length
+    ? toLock.length + ' team' + (toLock.length === 1 ? '' : 's') + ' auto-locked at the clock. Resolve when ready.'
+    : 'Clock expired. All teams had already locked in.', 'ok');
+}
+
+async function refreshBoard() {
+  if (!GAME_ID) return;
+  const [{ data: teams }, { data: decs }] = await Promise.all([
+    supa.from('powder_teams').select('*').eq('game_id', GAME_ID).order('seat_index'),
+    supa.from('powder_decisions').select('team_id, payload, kind').eq('game_id', GAME_ID).eq('season', CUR_SEASON).in('kind', ['season_submitted', 'auto_locked']).order('created_at'),
+  ]);
+  TEAMS = teams || [];
+  const rows = decs || [];
+  const submitted = new Map(rows.filter(d => d.kind === 'season_submitted').map(d => [d.team_id, d.payload || {}]));
+  // auto_locked is a marker row, not a decision: the seat is resolved by the engine default.
+  const autoLocked = new Set(rows.filter(d => d.kind === 'auto_locked').map(d => d.team_id));
+
+  const tbody = document.getElementById('tbodyBoard');
+  tbody.innerHTML = '';
+  const humanTeamSeats = TEAMS.filter(t => !t.is_ai && t.seat_index < TEAM_SEATS);
+  TEAMS.forEach(t => {
+    const fixed = FIXED_NAME[t.seat_index];
+    let badge;
+    if (fixed) badge = '<span class="tag tag-ai">AI, permanent</span>';
+    else if (t.is_ai) badge = '<span class="tag tag-ai">AI</span>';
+    else {
+      const dec = submitted.get(t.id);
+      badge = dec
+        ? (dec.auto_locked ? '<span class="tag tag-autolock">AUTO-LOCKED</span>' : '<span class="tag tag-ready">READY</span>')
+        : (autoLocked.has(t.id)
+            ? '<span class="tag tag-autolock">AUTO-LOCKED</span>'
+            : '<span class="tag tag-waiting">WAITING</span>');
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>Seat ${t.seat_index + 1}</td><td>${esc(fixed || t.name)}</td><td>${t.is_ai ? 'AI' : 'Human'}</td><td>${badge}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const waiting = humanTeamSeats.filter(t => !submitted.has(t.id)).length;
+  const readyCount = humanTeamSeats.length - waiting;
+  document.getElementById('boardStatus').textContent = waiting === 0
+    ? 'All human teams have locked in a season plan. Ready to resolve.'
+    : waiting + ' of ' + humanTeamSeats.length + ' human teams still deciding.';
+  const summaryEl = document.getElementById('boardReadySummary');
+  summaryEl.textContent = (waiting === 0 && humanTeamSeats.length > 0)
+    ? 'All teams ready (' + readyCount + ' / ' + humanTeamSeats.length + ')'
+    : 'Teams ready: ' + readyCount + ' / ' + humanTeamSeats.length;
+  summaryEl.classList.toggle('all-ready', waiting === 0 && humanTeamSeats.length > 0);
+
+  await loadStageGuesses();
+  renderDashboard(submitted);
+}
+
+// Builds the decisionsBySeat map for one season: every team seat (0-7) always gets an
+// entry (its own submission, the neutral policy for an AI-filled seat, or the neutral
+// policy with auto_locked:true as a defensive fallback), so decide() is never asked to
+// resolve a 'NEUTRAL' archetype it has no case for (see assumption 1 at the top of this
+// file). Vail and Alta (seats 8/9) are never in the map, so the engine runs their real
+// scripted policy exactly as the gate suite tests it.
+async function decisionsForSeason(season) {
+  // ordered by time so a team's LATEST revision is the one that lands in the map
+  const { data: decs } = await supa.from('powder_decisions').select('team_id, payload')
+    .eq('game_id', GAME_ID).eq('season', season).eq('kind', 'season_submitted').order('created_at');
+  const byTeamId = new Map((decs || []).map(d => [d.team_id, d.payload]));
+  const bySeat = {};
+  const unattended = [];
+  for (const t of TEAMS) {
+    if (t.seat_index === VAIL_SEAT || t.seat_index === ALTA_SEAT) continue;
+    // An AI-filled seat, or a team that never locked in, is left OUT of the map on purpose.
+    // A seat absent from decisionsBySeat is resolved by the engine's own NEUTRAL policy, which
+    // is the single source of truth for what a generic resort does. What it chose is written to
+    // the decision log after the season resolves, so nothing is lost from the audit trail.
+    if (t.is_ai) { unattended.push({ team: t, why: 'ai' }); continue; }
+    const p = byTeamId.get(t.id);
+    if (p) bySeat[t.seat_index] = p;
+    else unattended.push({ team: t, why: 'auto_locked' });
+  }
+  return { bySeat, unattended };
+}
+
+// ==========================================================================
+// ---- Resolve ----
+// ==========================================================================
+async function resolveSeason() {
+  if (resolving) return;
+  resolving = true;
+  document.getElementById('btnResolve').disabled = true;
+  stopClock(true);
+  try {
+    if (!GAME_STATE) await rebuildGameState();
+
+    const { bySeat: decisionsBySeat, unattended } = await decisionsForSeason(CUR_SEASON);
+    const priorSeason = CUR_SEASON;
+    PowderEngine.stepSeason(GAME_STATE, decisionsBySeat);
+
+    // Record what the engine chose for every seat nobody drove, so the decision log is complete.
+    for (const u of unattended) {
+      const r = GAME_STATE.resorts[u.team.seat_index];
+      const rec = decisionActuallyTaken(r);
+      rec[u.why === 'ai' ? 'ai_decided' : 'auto_locked'] = true;
+      await logDecisionForSeasonNum(u.team.id, priorSeason, 'season_submitted', rec);
+    }
+
+    // Write back every seat's state, then one engine_result row per seat carrying the
+    // fields the engine computes and would otherwise discard: intended vs realized
+    // movement, still-seasons, track-out penalty, dwell, war cost, served, profit, cash.
+    // crowdedBy is this file's own derived nearest-rival read, not an engine field (see
+    // assumption 5 at the top of this file).
+    // All seat writes go out in parallel and the engine_result rows land in ONE insert. The
+    // first live run did these as twenty sequential awaits and a resolve took 11 seconds, which
+    // is a long silence on a projector with a room watching.
+    const stateWrites = [];
+    const resultRows = [];
+    for (const t of TEAMS) {
+      const r = GAME_STATE.resorts[t.seat_index];
+      // position history rides on the resort object so the team client can draw its replay
+      // strip and its realized-move arrow without re-deriving anything
+      r.posHistory = (r.posHistory || []).concat([[...r.pos]]);
+      stateWrites.push(supa.from('powder_teams').update({ state: JSON.parse(JSON.stringify(r)) }).eq('id', t.id));
+      const served = r.seasonServed.length ? r.seasonServed[r.seasonServed.length - 1] : 0;
+      const profit = r.seasonProfit.length ? r.seasonProfit[r.seasonProfit.length - 1] : 0;
+      resultRows.push({ game_id: GAME_ID, team_id: t.id, season: priorSeason, kind: 'engine_result', payload: {
+        intendedDelta: r._intendedDelta, realizedDelta: r._realizedDelta, moveFraction: r._moveFraction,
+        stillSeasons: r._stillSeasons, trackOutPen: r._trackOutPen, dwell: r._dwell, warCost: r._warCost,
+        served, profit, cash: r.cash, util: r._util, staff: r.staff,
+        crowdedBy: crowdedByFor(r, GAME_STATE.resorts),
+      } });
+    }
+    const results = await Promise.all(stateWrites);
+    const failed = results.filter(x => x.error);
+    if (failed.length) msg('Warning: ' + failed.length + ' seat state write(s) failed: ' + failed[0].error.message, 'err');
+    const ins = await supa.from('powder_decisions').insert(resultRows);
+    if (ins.error) msg('Warning: engine_result rows failed: ' + ins.error.message, 'err');
+
+    WORLD.segTrace = GAME_STATE.segTrace;
+    // this season's weather, so the team client can narrate it (the engine does not persist it)
+    WORLD.snowTrace = (WORLD.snowTrace || []).concat([GAME_STATE.snow]);
+    await supa.from('powder_games').update({ world: WORLD, phase: 'resolve' }).eq('id', GAME_ID);
+    await logDecisionForSeasonNum(null, priorSeason, 'phase_advanced', { from: 'board', to: 'resolve', season: priorSeason });
+    setPhaseChip('resolve');
+    msg('Season ' + (priorSeason + 1) + ' resolved.', 'ok');
+
+    await advanceSeason();
+  } finally {
+    resolving = false;
+  }
+}
+
+// Own nearest-rival distance read (not an engine field): rivals within a fixed threshold
+// of this seat's post-move position, nearest first. Approximates "who converged on the
+// same segment"; see assumption 5 at the top of this file.
+function crowdedByFor(r, resorts) {
+  const THRESH = ((window.PowderEngine && PowderEngine.CONFIG.SEG_SIGMA) || 0.3) * 1.2;
+  const near = [];
+  for (const o of resorts) {
+    if (o.i === r.i) continue;
+    const d = PowderEngine.dist3(r.pos, o.pos);
+    if (d <= THRESH) near.push({ seat: o.i, dist: Number(d.toFixed(3)) });
+  }
+  near.sort((a, b) => a.dist - b.dist);
+  return near.map(n => n.seat);
+}
+
+async function advanceSeason() {
+  const SEASONS = (window.PowderEngine && PowderEngine.CONFIG.SEASONS) || 6;
+  if (GAME_STATE.season >= SEASONS) {
+    const finalResorts = PowderEngine.finalizeGame(GAME_STATE);
+    for (const t of TEAMS) {
+      const r = finalResorts[t.seat_index];
+      await supa.from('powder_teams').update({ state: JSON.parse(JSON.stringify(r)) }).eq('id', t.id);
+    }
+    await supa.from('powder_games').update({ status: 'done', phase: 'ended' }).eq('id', GAME_ID);
+    await logDecisionForSeasonNum(null, CUR_SEASON, 'phase_advanced', { from: 'resolve', to: 'ended' });
+    setPhaseChip('ended');
+    msg('Game over. The debrief is up.', 'ok');
+    showSection('secDebrief');
+    await renderDebrief();
+    return;
+  }
+  CUR_SEASON = GAME_STATE.season;
+  await supa.from('powder_games').update({ phase: 'board', season: CUR_SEASON }).eq('id', GAME_ID);
+  await logDecisionForSeasonNum(null, CUR_SEASON, 'phase_advanced', { from: 'resolve', to: 'board', season: CUR_SEASON });
+  setPhaseChip('board');
+  document.getElementById('boardSeason').textContent = seasonLabel();
+  document.getElementById('btnResolve').disabled = false;
+  prefillClock(CUR_SEASON);
+  msg('Season ' + (CUR_SEASON + 1) + ' is open.', 'ok');
+  await refreshBoard();
+}
+
+// ==========================================================================
+// ---- Live instructor dashboard (projector, refreshed with the board) ----
+// ==========================================================================
+let STAGE_GUESSES = {};   // team_id -> { season -> guess }, from stage_guess rows, latest per season
+async function loadStageGuesses() {
+  if (!GAME_ID) return;
+  const { data } = await supa.from('powder_decisions').select('team_id, season, payload')
+    .eq('game_id', GAME_ID).eq('kind', 'stage_guess').order('created_at');
+  const out = {};
+  (data || []).forEach(d => { if (!out[d.team_id]) out[d.team_id] = {}; out[d.team_id][d.season] = d.payload && d.payload.stageGuess; });
+  STAGE_GUESSES = out;
+}
+function renderDashboard(submittedMap) {
+  const el = document.getElementById('dashPanels');
+  if (!el) return;
+  submittedMap = submittedMap || new Map();
+  // The stage read is graded on the last RESOLVED season: a guess for the season now open cannot
+  // be scored until it resolves, and a projector card that said "no guess yet" all through the
+  // board phase told the instructor nothing. STAGE_GUESSES is filled by loadStageGuesses().
+  const trace = trueStageTrace();
+  const graded = CUR_SEASON - 1;
+  const trueStage = graded >= 0 ? (trace[graded] || null) : null;
+  const floor = (window.PowderEngine && PowderEngine.CONFIG.retaliateFloor) || 35;
+  const rows = TEAMS.filter(t => t.seat_index < SEAT_COUNT).sort((a, b) => a.seat_index - b.seat_index);
+
+  const stageRows = rows.filter(t => !t.is_ai).map(t => {
+    const hist = STAGE_GUESSES[t.id] || {};
+    const guess = graded >= 0 ? hist[graded] : null;
+    const correct = guess && trueStage && guess === trueStage;
+    let hits = 0, n = 0;
+    for (let k = 0; k <= graded; k++) { if (hist[k]) { n++; if (hist[k] === trace[k]) hits++; } }
+    const cur = submittedMap.get(t.id);
+    const pending = cur && cur.stageGuess ? ' (this season: ' + esc(cur.stageGuess) + ')' : '';
+    return `<tr><td>${esc(t.name)}</td><td>${guess ? esc(guess) : '<em>no read</em>'}${pending}</td>` +
+      `<td class="${guess ? (correct ? 'dash-ok' : 'dash-bad') : ''}">${guess ? (correct ? 'correct' : 'off, it was ' + esc(trueStage)) : '-'}` +
+      `${n ? ' <span style="color:var(--dim)">' + hits + '/' + n + ' so far</span>' : ''}</td></tr>`;
+  }).join('');
+
+  const warRows = rows.filter(t => t.state && (t.state._warCost || 0) > 0)
+    .map(t => `<tr><td>${esc(FIXED_NAME[t.seat_index] || t.name)}</td><td>${Number(t.state._warCost).toFixed(1)}</td></tr>`).join('');
+
+  const brokeRows = rows.filter(t => t.state && (t.state.cash < 0 || t.state.cash < floor))
+    .map(t => `<tr><td>${esc(FIXED_NAME[t.seat_index] || t.name)}</td><td>$${Math.round(t.state.cash)}</td>` +
+      `<td>${t.state.cash < 0 ? 'negative cash' : 'below the retaliation floor ($' + Math.round(floor) + ')'}</td></tr>`).join('');
+
+  const THRESH = 0.36;
+  const posRows = rows.filter(t => t.state && Array.isArray(t.state.pos));
+  const crowdedPairs = [];
+  for (let i = 0; i < posRows.length; i++) {
+    for (let j = i + 1; j < posRows.length; j++) {
+      // AI-filled seats run one policy from one start, so they sit on the same point all game;
+      // listing every AI pair at distance 0.00 buried the one row that matters. Only pairs that
+      // involve a human team are worth the instructor's eye.
+      if (posRows[i].is_ai && posRows[j].is_ai) continue;
+      const a = posRows[i].state.pos, b = posRows[j].state.pos;
+      const d = Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+      if (d <= THRESH) crowdedPairs.push([posRows[i], posRows[j], d]);
+    }
+  }
+  crowdedPairs.sort((x, y) => x[2] - y[2]);
+  const crowdRows = crowdedPairs.map(([a, b, d]) =>
+    `<tr><td>${esc(FIXED_NAME[a.seat_index] || a.name)} and ${esc(FIXED_NAME[b.seat_index] || b.name)}</td><td>${d.toFixed(2)}</td></tr>`).join('');
+
+  el.innerHTML =
+    `<div class="dash-grid">` +
+      `<div class="dash-card"><div class="dash-title">Stage read${graded >= 0 ? ' (season ' + (graded + 1) + ', resolved)' : ' (nothing resolved yet)'}</div>` +
+        `<table class="dash-table"><thead><tr><th>Team</th><th>Guess</th><th>Result</th></tr></thead>` +
+        `<tbody>${stageRows || '<tr><td colspan="3"><em>no human teams</em></td></tr>'}</tbody></table></div>` +
+      `<div class="dash-card"><div class="dash-title">In a price war</div>` +
+        `<table class="dash-table"><thead><tr><th>Team</th><th>War cost</th></tr></thead>` +
+        `<tbody>${warRows || '<tr><td colspan="2"><em>none</em></td></tr>'}</tbody></table></div>` +
+      `<div class="dash-card"><div class="dash-title">Broke or close to it</div>` +
+        `<table class="dash-table"><thead><tr><th>Team</th><th>Cash</th><th>Why</th></tr></thead>` +
+        `<tbody>${brokeRows || '<tr><td colspan="3"><em>none</em></td></tr>'}</tbody></table></div>` +
+      `<div class="dash-card"><div class="dash-title">Crowded segments</div>` +
+        `<table class="dash-table"><thead><tr><th>Teams</th><th>Distance</th></tr></thead>` +
+        `<tbody>${crowdRows || '<tr><td colspan="2"><em>no convergence</em></td></tr>'}</tbody></table></div>` +
+    `</div>`;
+}
+
+// ==========================================================================
+// ---- End-of-game debrief (projector) ----
+// ==========================================================================
+async function renderDebrief() {
+  const { data: teams } = await supa.from('powder_teams').select('*').eq('game_id', GAME_ID).order('seat_index');
+  TEAMS = teams || [];
+  const { data: allDecs } = await supa.from('powder_decisions').select('*').eq('game_id', GAME_ID)
+    .in('kind', ['season_submitted', 'engine_result']).order('season');
+  const SEASONS = (window.PowderEngine && PowderEngine.CONFIG.SEASONS) || 6;
+
+  renderStageScorecard(TEAMS, allDecs || [], SEASONS);
+  renderMovementLedger(TEAMS, allDecs || [], SEASONS);
+  renderFinalStandings(TEAMS);
+}
+
+function renderStageScorecard(teams, allDecs, SEASONS) {
+  const trace = trueStageTrace();
+  const byTeamSeason = new Map();
+  allDecs.filter(d => d.kind === 'season_submitted').forEach(d => byTeamSeason.set(d.team_id + ':' + d.season, d.payload));
+  const humanTeams = teams.filter(t => !t.is_ai && t.seat_index < TEAM_SEATS);
+
+  const rows = humanTeams.map(t => {
+    let correct = 0, attempted = 0;
+    const cells = [];
+    for (let s = 0; s < SEASONS; s++) {
+      const p = byTeamSeason.get(t.id + ':' + s);
+      const guess = p && p.stageGuess;
+      const truth = trace[s];
+      if (guess) {
+        attempted++;
+        const ok = !!(truth && guess === truth);
+        if (ok) correct++;
+        cells.push(`<td class="${ok ? 'dash-ok' : 'dash-bad'}">${esc(guess)}</td>`);
+      } else cells.push('<td><em>-</em></td>');
+    }
+    const pct = attempted ? Math.round(correct / attempted * 100) : null;
+    return `<tr><td>${esc(t.name)}</td>${cells.join('')}<td><b>${pct == null ? 'n/a' : pct + '%'}</b></td></tr>`;
+  }).join('');
+
+  const head = Array.from({ length: SEASONS }, (_, s) => `<th>S${s + 1}</th>`).join('');
+  const trueRow = trace.length ? trace.map((s, i) => 'S' + (i + 1) + ' ' + esc(s)).join(', ') : 'not recorded';
+  document.getElementById('debriefStageTable').innerHTML =
+    `<table class="debrief-table"><thead><tr><th>Team</th>${head}<th>Accuracy</th></tr></thead>` +
+    `<tbody>${rows || '<tr><td colspan="' + (SEASONS + 2) + '"><em>no human teams</em></td></tr>'}</tbody></table>` +
+    `<div class="debrief-note" style="margin-top:0.8rem;margin-bottom:0">Hidden true stage, season by season: ${trueRow}.</div>`;
+}
+
+function renderMovementLedger(teams, allDecs, SEASONS) {
+  const byTeamSeason = new Map();
+  allDecs.filter(d => d.kind === 'engine_result').forEach(d => byTeamSeason.set(d.team_id + ':' + d.season, d.payload));
+  const allTeams = teams.filter(t => t.seat_index < SEAT_COUNT).sort((a, b) => a.seat_index - b.seat_index);
+
+  const rows = allTeams.map(t => {
+    let intendedMag = 0, realizedMag = 0;
+    for (let s = 0; s < SEASONS; s++) {
+      const p = byTeamSeason.get(t.id + ':' + s);
+      if (!p || !p.intendedDelta || !p.realizedDelta) continue;
+      intendedMag += Math.hypot(...p.intendedDelta);
+      realizedMag += Math.hypot(...p.realizedDelta);
+    }
+    const shortfall = intendedMag > 0 ? Math.round((1 - realizedMag / intendedMag) * 100) : null;
+    return `<tr><td>${esc(FIXED_NAME[t.seat_index] || t.name)}</td><td>${intendedMag.toFixed(2)}</td>` +
+      `<td>${realizedMag.toFixed(2)}</td><td>${shortfall == null ? 'n/a' : shortfall + '%'}</td></tr>`;
+  }).join('');
+
+  document.getElementById('debriefMoveTable').innerHTML =
+    `<table class="debrief-table"><thead><tr><th>Team</th><th>Intended movement</th><th>Realized movement</th><th>Shortfall</th></tr></thead>` +
+    `<tbody>${rows || '<tr><td colspan="4"><em>no data</em></td></tr>'}</tbody></table>`;
+}
+
+function renderFinalStandings(teams) {
+  const rows = teams.filter(t => t.seat_index < SEAT_COUNT).map(t => {
+    const st = t.state || {};
+    return {
+      name: FIXED_NAME[t.seat_index] || t.name,
+      score: st.score || 0, cash: st.cash || 0, rep: st.rep || 0,
+      cashTrend: st.seasonProfit ? cumulativeCash(st) : null,
+      fixed: !!FIXED_NAME[t.seat_index],
+    };
+  }).sort((a, b) => b.score - a.score);
+
+  const trs = rows.map((r, i) => {
+    const spark = (window.Recap && r.cashTrend && r.cashTrend.length > 1)
+      ? window.Recap.sparkline(r.cashTrend, { color: '#25666f' }) : '';
+    return `<tr class="${i === 0 ? 'debrief-rank1' : ''}"><td>${i + 1}</td>` +
+      `<td>${esc(r.name)}${r.fixed ? ' <span class="tag tag-ai">AI rival</span>' : ''}</td>` +
+      `<td>${r.score.toFixed(0)}</td><td>$${Math.round(r.cash).toLocaleString()}</td>` +
+      `<td>${(r.rep * 100).toFixed(0)}%</td><td>${spark}</td></tr>`;
+  }).join('');
+
+  document.getElementById('debriefStandingsTable').innerHTML =
+    `<table class="debrief-table"><thead><tr><th>Rank</th><th>Team</th><th>Score</th><th>Cash</th><th>Reputation</th><th>Cash trend</th></tr></thead>` +
+    `<tbody>${trs || '<tr><td colspan="6"><em>no data</em></td></tr>'}</tbody></table>`;
+}
+
+// Cumulative cash by season from a team's own seasonProfit trace (starting cash plus a
+// running sum), for the standings sparkline. Public information only, same rule recap.js
+// itself follows on the ranch console.
+function cumulativeCash(st) {
+  const start = st.cash - st.seasonProfit.reduce((a, b) => a + b, 0);
+  let running = start;
+  return st.seasonProfit.map(p => { running += p; return running; });
+}
+
+// ==========================================================================
+// ---- Decision log helper ----
+// ==========================================================================
+async function logDecisionForSeasonNum(teamId, season, kind, payload) {
+  if (!GAME_ID) return;
+  await supa.from('powder_decisions').insert({ game_id: GAME_ID, team_id: teamId || null, season, kind, payload });
+}
+
+// ---- Polling fallback ----
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => {
+    const lobbyVisible = document.getElementById('secLobby').style.display !== 'none';
+    const boardVisible = document.getElementById('secBoard').style.display !== 'none';
+    if (lobbyVisible) refreshTeams();
+    if (boardVisible) refreshBoard();
+  }, POLL_MS);
+}
+</script>
+</body>
+</html>

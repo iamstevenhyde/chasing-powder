@@ -1,0 +1,2291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chasing Powder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Worn Futurism, alpine night: the map is the cold mountain, the chrome is the warm lodge.
+       Hue family lifted from chasing-powder-model.html (rust #c8552b / teal #25666f / gold #a9791f),
+       re-pitched for dark-surface contrast. Fonts: Atkinson Hyperlegible body (dyslexia-friendly),
+       Fraunces display, JetBrains Mono HUD. */
+    --bg:#141210; --panel:#1c1915; --panel2:#26211b; --line:#3a322a; --line2:#4a4036;
+    --text:#efe9e1; --dim:#a89c8d;
+    --rust:#c8552b; --rust-hi:#e07a4e; --gold:#d8a83f; --teal:#5aa7b0; --teal-d:#25666f;
+    --danger:#e05a50; --ok:#7fb069; --ghost:#8d9db5;
+    --font-body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-display:'Fraunces',Georgia,serif;
+    --font-mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:var(--font-body);height:100%;}
+  body{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+  #hud{display:flex;align-items:center;gap:20px;padding:10px 18px;
+    background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;flex-wrap:wrap;}
+  #hud h1{font-family:var(--font-display);font-size:17px;margin:0;font-weight:700;
+    letter-spacing:.01em;color:var(--rust-hi);}
+  #hud .stat{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--dim);}
+  #hud .stat b{font-family:var(--font-display);font-size:17px;font-weight:500;
+    color:var(--gold);letter-spacing:0;text-transform:none;margin-left:2px;}
+  #hud .spacer{flex:1;}
+  #helpBtn, #dossierBtn, #mapThemeBtn{background:var(--panel2);border:1px solid var(--line2);color:var(--text);
+    border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;margin-right:8px;
+    font-family:var(--font-body);transition:border-color .15s;}
+  #helpBtn:hover, #dossierBtn:hover, #mapThemeBtn:hover{border-color:var(--gold);}
+  #helpBtn:focus-visible, #dossierBtn:focus-visible, #mapThemeBtn:focus-visible{outline:2px solid var(--teal);outline-offset:1px;}
+  .dossierRow{display:flex;gap:8px;align-items:flex-start;margin-bottom:9px;}
+  .dossierRow .dchip{flex:0 0 11px;width:11px;height:11px;border-radius:50%;margin-top:3px;}
+  .dossierRow .dd{font-size:11px;color:var(--dim);margin-top:1px;line-height:1.4;}
+
+  #main{flex:1;display:flex;min-height:0;}
+  #boardWrap{flex:1 1 auto;position:relative;display:flex;align-items:center;justify-content:center;
+    padding:8px;min-width:0;background:radial-gradient(ellipse at 50% 40%, #0f1520 0%, #060a10 100%);}
+  #boardWrap.mapLight{background:radial-gradient(ellipse at 50% 40%, #eff5f7 0%, #d8e2e6 100%);}
+  #board{width:100%;height:100%;cursor:grab;}
+  #board.dragging{cursor:grabbing;}
+  #reportLine{position:absolute;top:10px;left:14px;right:14px;font-size:13px;
+    color:var(--text);background:rgba(28,25,21,.82);border:1px solid var(--line);
+    border-radius:8px;padding:8px 12px;line-height:1.4;pointer-events:none;}
+  #reportLine b{color:var(--gold);}
+  #logStrip{position:absolute;bottom:10px;left:14px;right:14px;font-size:11.5px;
+    font-family:var(--font-mono);color:var(--text);background:rgba(28,25,21,.86);border:1px solid var(--line);
+    border-radius:8px;padding:7px 12px;line-height:1.55;max-height:120px;overflow-y:auto;}
+  #logStrip .ln{margin-bottom:2px;}
+  #logStrip .ln.gate{color:var(--teal);}
+  #logStrip .ln.decay{color:var(--danger);}
+  #logStrip .ln.market{color:var(--gold);}
+  #logStrip .ln.contest{color:#d9a3cf;}
+  #logStrip .ln.weather{color:#9db8d9;}
+
+  #side{width:400px;flex:0 0 400px;border-left:1px solid var(--line);
+    background:var(--panel);display:flex;flex-direction:column;min-height:0;}
+  #levers{flex:1 1 auto;overflow-y:auto;padding:14px;}
+  #levers h2{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;
+    color:var(--teal);margin:4px 0 10px;}
+  .lever{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;margin-bottom:9px;}
+  .lever .t{display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;margin-bottom:3px;}
+  .lever .t .cost{font-family:var(--font-mono);font-weight:600;color:var(--gold);}
+  .lever .l{font-size:11.5px;color:var(--dim);line-height:1.4;margin-bottom:7px;}
+  .lever input[type=range]{width:100%;accent-color:var(--rust);}
+  .lever .rowline{display:flex;align-items:center;gap:8px;}
+  .lever .valtag{width:56px;text-align:right;font-family:var(--font-mono);font-size:11.5px;color:var(--gold);flex:0 0 auto;}
+  .lever .gatenote{font-size:11px;color:var(--teal);margin-top:4px;}
+
+  #budgetLine{font-family:var(--font-mono);font-size:11.5px;color:var(--dim);margin:2px 0 10px;padding:0 2px;}
+  #budgetLine b{color:var(--text);}
+  #budgetLine.over{color:var(--danger);}
+  #budgetLine.over b{color:var(--danger);}
+
+  #memoCards{padding:0 14px 10px;}
+  #memoCards h2{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--teal);margin:4px 0 8px;}
+  .memo{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:8px 11px;margin-bottom:7px;font-size:12px;line-height:1.45;}
+  .memo b{color:var(--gold);}
+  .memo .warn{color:var(--danger);}
+
+  #controls{flex:0 0 auto;border-top:1px solid var(--line);padding:12px;}
+  #lockBtn{width:100%;padding:11px;background:var(--rust);border:none;border-radius:7px;
+    color:#fdf3ec;font-weight:700;font-size:14px;cursor:pointer;letter-spacing:.02em;
+    font-family:var(--font-body);transition:filter .15s;}
+  #lockBtn:disabled{background:#403a33;color:#8a8177;cursor:not-allowed;}
+  #lockBtn:not(:disabled):hover{filter:brightness(1.12);}
+  #lockBtn:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+  #segPopup{position:absolute;background:var(--panel);border:1px solid var(--gold);
+    border-radius:8px;padding:10px 12px;font-size:12.5px;display:none;z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:190px;}
+  #segPopup .t{font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--gold);margin-bottom:6px;}
+  #segPopup .bar{height:8px;background:#332c24;border-radius:4px;margin:4px 0;overflow:hidden;}
+  #segPopup .bar i{display:block;height:100%;background:var(--ghost);}
+  #segPopup .barlabel{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10px;color:var(--dim);}
+  #segPopup .gate{color:var(--danger);font-size:11px;margin-top:6px;}
+
+  #legendBox{position:absolute;bottom:140px;left:14px;font-size:11px;color:var(--dim);
+    background:rgba(28,25,21,.85);border:1px solid var(--line);border-radius:8px;
+    padding:8px 11px;line-height:1.55;max-width:220px;pointer-events:none;}
+  #legendBox .lgTitle{font-family:var(--font-mono);color:var(--teal);text-transform:uppercase;letter-spacing:.12em;
+    font-size:9px;margin-bottom:4px;}
+  #legendBox .lgRow{display:flex;align-items:baseline;gap:6px;}
+  #legendBox .lgMark{flex:0 0 16px;text-align:center;}
+
+  .overlay{position:fixed;inset:0;background:rgba(12,10,8,.86);display:flex;
+    align-items:center;justify-content:center;z-index:50;}
+  .overlay.hidden{display:none;}
+  .card{background:var(--panel);border:1px solid var(--line2);border-radius:12px;
+    padding:26px 30px;max-width:540px;max-height:82vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.55);}
+  .card h2{margin-top:0;font-family:var(--font-display);font-weight:700;font-size:24px;
+    letter-spacing:-.01em;color:var(--rust-hi);text-wrap:balance;}
+  .card p, .card li{font-size:13.5px;line-height:1.55;color:var(--text);}
+  .card ul{padding-left:18px;margin:10px 0;}
+  .card button:not(.seatBtn){margin-top:14px;width:100%;padding:11px;background:var(--rust);
+    border:none;border-radius:7px;color:#fdf3ec;font-weight:700;cursor:pointer;font-size:14px;
+    font-family:var(--font-body);transition:filter .15s;}
+  .card button:not(.seatBtn):hover{filter:brightness(1.12);}
+  .card button:not(.seatBtn):focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  #endTable, #seatTable, .miniTable{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;}
+  #endTable td, #endTable th, #seatTable td, #seatTable th, .miniTable td, .miniTable th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;}
+  #endTable th, #seatTable th, .miniTable th{font-family:var(--font-mono);font-size:10px;text-transform:uppercase;
+    letter-spacing:.1em;color:var(--teal);font-weight:600;}
+  .seatBtn{display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:10px 12px;margin-bottom:8px;color:var(--text);cursor:pointer;font-size:13.5px;
+    font-family:var(--font-body);transition:border-color .15s;}
+  .seatBtn:hover{border-color:var(--gold);}
+  .seatBtn:focus-visible{outline:2px solid var(--teal);outline-offset:1px;}
+  .seatBtn b{color:var(--gold);}
+  .seatBtn .d{font-size:11.5px;color:var(--dim);margin-top:2px;}
+  .scoreCol{display:flex;gap:18px;flex-wrap:wrap;}
+  .scoreCol .block{flex:1;min-width:210px;}
+  .scoreCol h3{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.12em;color:var(--teal);margin:10px 0 4px;}
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+
+  .joinRow{display:flex;gap:8px;margin:8px 0;}
+  .joinRow input{flex:1;padding:10px 12px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);
+    color:var(--text);font-family:var(--font-mono);font-size:15px;letter-spacing:.08em;}
+  .joinRow input:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+  #lockBtn.locked{background:var(--teal-d);}
+  #stageRow{display:flex;gap:6px;margin:8px 0;}
+  #stageRow button{flex:1;padding:8px 4px;border-radius:6px;border:1px solid var(--line2);background:var(--panel2);
+    color:var(--text);cursor:pointer;font-family:var(--font-body);font-size:12.5px;}
+  #stageRow button.on{border-color:var(--gold);background:var(--teal-d);color:#fdf3ec;}
+  #rationale{width:100%;box-sizing:border-box;padding:8px;border-radius:6px;border:1px solid var(--line2);
+    background:var(--panel2);color:var(--text);font-family:var(--font-body);font-size:12.5px;resize:vertical;min-height:52px;margin:10px 0;}
+  #ctlNote{font-size:11px;color:var(--dim);margin:6px 0 0;line-height:1.4;}
+  .msgline{font-size:12px;color:var(--gold);margin-top:8px;min-height:16px;}
+  .msgline.err{color:var(--danger);}
+  #waitList{font-size:12.5px;line-height:1.7;}
+  #mtnGL{position:absolute;inset:0;width:100%;height:100%;display:none;background:#0c1220;}
+  #viewToggle{position:absolute;top:10px;left:14px;display:flex;gap:4px;z-index:12;}
+  #viewToggle button{background:rgba(28,25,21,.82);border:1px solid var(--line2);color:var(--text);
+    border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:var(--font-body);}
+  #viewToggle button.on{border-color:var(--gold);background:var(--teal-d);color:#fdf3ec;}
+  /* #reportLine ships at top:10px in the moved markup; give the toggle its own row above it so
+     nothing overlaps in either view. */
+  #reportLine{top:46px !important;}
+  #mtnCaption{position:absolute;top:48px;left:14px;right:14px;font-size:13px;color:var(--text);
+    background:rgba(28,25,21,.82);border:1px solid var(--gold);border-radius:8px;padding:6px 12px;
+    text-align:center;pointer-events:none;display:none;}
+  #mtnLegendBox{position:absolute;bottom:140px;left:14px;font-size:11px;color:var(--dim);
+    background:rgba(28,25,21,.85);border:1px solid var(--line);border-radius:8px;
+    padding:8px 11px;line-height:1.55;max-width:220px;pointer-events:none;display:none;}
+  #stepDots{flex:0 0 auto;display:flex;justify-content:space-between;padding:12px 14px 0;}
+  #stepDots .dotWrap{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;}
+  #stepDots .dot{width:10px;height:10px;border-radius:50%;background:var(--line2);border:1px solid var(--line2);
+    cursor:pointer;display:block;margin:0 auto;}
+  #stepDots .dot.on{background:var(--gold);border-color:var(--gold);}
+  #stepDots .dotLabel{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;}
+  .stepPane{flex:1 1 auto;overflow-y:auto;padding:12px 14px;min-height:0;}
+  .stepPane[hidden]{display:none;}
+  #stepNav{flex:0 0 auto;display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);}
+  #stepNav button{flex:1;background:var(--panel2);border:1px solid var(--line2);color:var(--text);
+    border-radius:6px;padding:9px;cursor:pointer;font-family:var(--font-body);font-size:13px;}
+  #stepNav button:hover:not(:disabled){border-color:var(--gold);}
+  #stepNav button:disabled{opacity:.4;cursor:not-allowed;}
+  #readReportLine, #readLogStrip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;margin:0 0 10px;font-size:13px;line-height:1.45;}
+  #readLogStrip{font-family:var(--font-mono);font-size:11.5px;max-height:240px;overflow-y:auto;}
+  #readReportLine b{color:var(--gold);}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h1>CHASING POWDER</h1>
+  <div class="stat" id="teamStat">Resort <b id="teamName">&nbsp;</b></div>
+  <div class="stat">Season <b id="seasonNum">1</b>/6</div>
+  <div class="stat">Cash <b id="cashNum">$60</b></div>
+  <div class="stat">Cum. Profit <b id="profitNum">$0</b></div>
+  <div class="stat">Rep <b id="repNum">0.50</b></div>
+  <div class="spacer"></div>
+  <button id="dossierBtn">Rival Dossiers</button>
+  <button id="helpBtn">How to play</button>
+  <button id="mapThemeBtn" title="Toggle the map ground between night and paper">Map: Night</button>
+</div>
+
+<div id="main">
+  <div id="boardWrap">
+    <canvas id="board"></canvas>
+    <canvas id="mtnGL"></canvas>
+    <div id="viewToggle">
+      <button id="viewMarketBtn" class="on">Market</button>
+      <button id="viewMountainBtn">Mountain</button>
+    </div>
+    <div id="mtnCaption"></div>
+    <div id="reportLine"></div>
+    <div id="logStrip"></div>
+    <div id="segPopup"></div>
+    <div id="legendBox">
+      <div class="lgTitle">Reading the board</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--gold)">&#9679;</span> Sphere size = capacity + a live sales pulse</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9677;</span> Rings around a sphere = dwell (moat)</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--teal)">&#9711;</span> Cloud size = segment demand share</div>
+      <div class="lgRow"><span class="lgMark">&#8901;&#8901;&#8901;</span> Dashed arrow = your planned aim</div>
+      <div class="lgRow"><span class="lgMark" style="display:inline-block;width:16px;border-top:2px solid var(--text);">&nbsp;</span> Solid arrow, your color = what actually landed</div>
+      <div class="lgRow"><span class="lgMark">&#9711;</span> Faded sphere = track-out decay</div>
+    </div>
+    <div id="mtnLegendBox">
+      <div class="lgTitle">Reading the mountain</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--text)">&#9615;</span> Pale stripe = a cut run</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9642;</span> Tower = +4 capacity above 100 (a second lift past 7)</div>
+      <div class="lgRow"><span class="lgMark" style="color:#ff8f1f">&#9644;</span> Billboard at the rim = $4 of marketing</div>
+      <div class="lgRow"><span class="lgMark" style="color:#ffd84d">#</span> Ticket board by the lodge = your day-pass price</div>
+      <div class="lgRow"><span class="lgMark" style="color:#3a5a9a">&#9641;</span> Solar panels = Cost Redesign owned</div>
+      <div class="lgRow"><span class="lgMark" style="color:#ff8f1f">&#9679;</span> Orange peg = crew on the hill (pale peg = hired, arrives next season)</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--danger)">&#10005;</span> Red flag = a run closed, understaffed</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9650;</span> Dark notch at the summit = expert chutes open</div>
+    </div>
+    <div id="dossierBox" style="display:none;position:absolute;top:56px;right:14px;width:260px;
+      font-size:11.5px;color:var(--text);background:rgba(28,25,21,.92);border:1px solid var(--line);
+      border-radius:8px;padding:10px 12px;line-height:1.5;max-height:70%;overflow-y:auto;z-index:15;">
+      <div class="lgTitle">Rival Dossiers</div>
+      <div id="dossierList"></div>
+    </div>
+  </div>
+  <div id="side">
+    <div id="stepDots">
+      <div class="dotWrap"><span class="dot" data-step="0"></span><span class="dotLabel">Read</span></div>
+      <div class="dotWrap"><span class="dot" data-step="1"></span><span class="dotLabel">Build</span></div>
+      <div class="dotWrap"><span class="dot" data-step="2"></span><span class="dotLabel">Price + Lock</span></div>
+    </div>
+    <div id="stepRead" class="stepPane">
+      <div id="readReportLine"></div>
+      <div id="readLogStrip"></div>
+      <div id="stageWrap">
+        <div class="l" style="font-size:11.5px;color:var(--dim);margin-bottom:4px;">Where is the industry right now? (your read; graded at the debrief)</div>
+        <div id="stageRow">
+          <button data-stage="growth">Growth</button>
+          <button data-stage="shakeout">Shakeout</button>
+          <button data-stage="mature">Mature</button>
+        </div>
+      </div>
+    </div>
+    <div id="stepBuild" class="stepPane" hidden>
+      <div id="levers"></div>
+    </div>
+    <div id="stepPrice" class="stepPane" hidden>
+      <div id="priceLevers"></div>
+      <div id="memoCards"></div>
+      <textarea id="rationale" placeholder="Why this plan? One line. It goes in the debrief."></textarea>
+      <div id="budgetLine">Budget: <b id="budgetSpent">$0</b> / <b id="budgetTotal">$28</b></div>
+      <button id="lockBtn">LOCK IN SEASON 1</button>
+      <div id="ctlNote"></div>
+    </div>
+    <div id="stepNav">
+      <button id="stepBackBtn">Back</button>
+      <button id="stepNextBtn">Next</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="seatOverlay">
+  <div class="card">
+    <h2>Join your table's game</h2>
+    <p>Your instructor reads out a five-letter code. Enter it and name your resort. Every table starts from the same mountain; what you do with it is the game.</p>
+    <div class="joinRow"><input id="joinCode" maxlength="5" placeholder="CODE" autocomplete="off" spellcheck="false"></div>
+    <div class="joinRow"><input id="teamNameIn" maxlength="28" placeholder="Your resort's name" autocomplete="off"></div>
+    <button id="joinBtn">Join</button>
+    <div class="msgline" id="joinMsg"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="waitOverlay">
+  <div class="card">
+    <h2 id="waitTitle">You are in</h2>
+    <p id="waitText">Waiting for the instructor to open season 1. Keep this tab open; the board appears on its own.</p>
+    <div id="waitList"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="introOverlay">
+  <div class="card">
+    <h2>The space, your turn, what to watch</h2>
+    <p>Three axes, six buyer segments, one hidden sweet spot that moves each season.</p>
+    <table class="miniTable">
+      <tr><th>Axis</th><th>What it means</th></tr>
+      <tr><td>Terrain Challenge</td><td>How hard/advanced the mountain is</td></tr>
+      <tr><td>Comfort / Amenities</td><td>Lodging, dining, non-ski experience</td></tr>
+      <tr><td>Price Position</td><td>Where you sit from budget to premium</td></tr>
+    </table>
+    <table class="miniTable">
+      <tr><th>Segment</th><th>Trend</th><th>Worth knowing</th></tr>
+      <tr><td>Core/Expert</td><td>Shrinking</td><td>Aging in place, wants hard terrain</td></tr>
+      <tr><td>Destination Family</td><td>Growing</td><td>Price-insensitive, books ahead</td></tr>
+      <tr><td>Day-Trip Feeder</td><td>Shrinking, faster late</td><td>Target of the late-game pass-war squeeze</td></tr>
+      <tr><td>Luxury/Amenity</td><td>Flat</td><td>Small, barely moves either way</td></tr>
+      <tr><td>Park &amp; Pipe Youth</td><td>Flat</td><td>Small, but culturally central</td></tr>
+      <tr><td>Beginner/Learn-to-Ski</td><td>Shrinking</td><td>Feeds Day-Trip and Destination Family as riders graduate out; the rest quit the sport</td></tr>
+    </table>
+    <p style="margin-top:14px;"><b>Your turn.</b> Every season: spend a budget across four levers, set two prices,
+    and set capacity. You never move your position directly. You spend, and the
+    market decides how far you actually move based on nearby demand and rival crowding.</p>
+    <table class="miniTable">
+      <tr><th>Lever</th><th>What it does</th></tr>
+      <tr><td>Add Runs</td><td>Builds toward Terrain Challenge; unlocks the expert-terrain threshold</td></tr>
+      <tr><td>Build Lodging</td><td>Builds toward Comfort; capped until you've paid enough in, then permanently open</td></tr>
+      <tr><td>Summer Events</td><td>A drought hedge: pays off strongly in a bad-snow season, costs opportunity in a powder one</td></tr>
+      <tr><td>Marketing</td><td>Widens your reach across segments</td></tr>
+      <tr><td>Day-pass / season-pass price</td><td>Sets your Price Position and your revenue mix</td></tr>
+      <tr><td>Capacity</td><td>A running-cost dial outside the season budget; sets how much demand you can serve, if you have the crew to run it</td></tr>
+      <tr><td>Hire crew</td><td>0, 1 or 2 crews. They start work NEXT season and stay on payroll every season after</td></tr>
+      <tr><td>Strategic Bets</td><td>Five named, one-time commitments with a real board expression (badges, rings, tethers)</td></tr>
+    </table>
+    <p style="margin-top:14px;"><b>What to watch.</b></p>
+    <ul>
+      <li><b>Track-out</b>: standing still still costs you. It gets worse after the market's turning point.</li>
+      <li><b>Gates</b>: Lodging caps your Comfort score until you've spent past a threshold. Once open, it stays open.</li>
+      <li><b>Moat rings</b>: sit still long enough and rings grow around your sphere. Two-sided bets grow them faster.</li>
+      <li><b>Lifecycle signals</b>: the Patrol Report gives a fuzzy heads-up (a range, never an exact number) when a segment is about to shift.</li>
+      <li><b>Rivals are real</b>: the other spheres are the other tables in this room, plus Vail and Alta, which run their real strategies. Nobody sees anybody's move until the season resolves.</li>
+      <li><b>Staffing</b>: capacity you cannot staff does not serve skiers. Hire a season ahead of a build; crew hired now starts next season.</li>
+      <li><b>Score</b>: cumulative economic value at the end of season 6. Cash on hand is not the score.</li>
+    </ul>
+    <button id="introClose">To the board</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOverlay">
+  <div class="card">
+    <h2 id="endTitle">Six seasons done</h2>
+    <p id="endEpitaph"></p>
+    <div class="scoreCol">
+      <div class="block">
+        <h3>Final standings by economic value (the score)</h3>
+        <table id="endTable"></table>
+      </div>
+    </div>
+        <div id="replayStrip"></div>
+    <button id="endClose">Close</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
+<script src="config.js?v=d9a9a8b126"></script>
+<script src="engine-powder.js?v=89a1a6200d"></script>
+<script>
+/* ============================================================
+   CHASING POWDER, team client (shared world).
+
+   This is the single-player 3D build with its economics removed. Everything that used to be a
+   local copy of the engine now comes from engine-powder.js (generated from chasing-powder.js,
+   never hand-edited), and the season is no longer resolved in this tab: Lock In writes this
+   team's decision to the shared game, the instructor resolves every seat at once, and the new
+   state arrives back here. The canvas render pipeline below (3D math through loop) is moved
+   from chasing-powder-3d.html line for line; only what FEEDS it changed.
+
+   Reads the engine only for pure preview helpers (resolveAxes, spatialMods, segMassShares...),
+   which is how the "where will this plan land" memo stays honest without a second copy of the
+   economics living in this file.
+   ============================================================ */
+const { CONFIG, SEGMENTS, BETS, TEAM_SEATS, RIVALS,
+        segMassShares, segVecAt, dist3, clamp, resolveAxes, mulberry32 } = PowderEngine;
+const supa = supabase.createClient(window.SUPA_URL, window.SUPA_ANON_KEY);
+const POLL_MS = 4000;
+
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function previewSpatialMods(r) {
+  let reachHi = r._reachHi == null ? 0.75 : r._reachHi;
+  if ((r._spendRuns || 0) >= CONFIG.RUNS_INFRA_THRESHOLD) reachHi = Math.max(reachHi, 1.0);
+  else reachHi = Math.max(0.75, reachHi - CONFIG.GATE_CLOSE_RATE);
+  const mods = { reachHi, moveBonus: 0, moveDiscount: 0, widthBonus: 0 };
+  if (r.pos[2] < 0.35) mods.moveDiscount = Math.min(0.35, (0.35 - r.pos[2]) / 0.35 * 0.35);
+  mods.widthBonus = Math.min(0.10, (r._spendMkt || 0) * CONFIG.MKT_WIDTH_RATE) + (r.lodgeBuilt ? 0.03 : 0)
+    + ((r.bets && r.bets.megapass) ? CONFIG.MEGAPASS_WIDTH_BONUS : 0);
+  return mods;
+}
+
+// ---------- 3D math: hand-rolled perspective projection (unchanged from proto-F) ----------
+function rotY(p, a){ const c=Math.cos(a), s=Math.sin(a); return {x:p.x*c+p.z*s, y:p.y, z:-p.x*s+p.z*c}; }
+function rotX(p, a){ const c=Math.cos(a), s=Math.sin(a); return {x:p.x, y:p.y*c-p.z*s, z:p.y*s+p.z*c}; }
+function project(p, cam){
+  let q = rotY(p, cam.yaw);
+  q = rotX(q, cam.pitch);
+  const camZ = cam.dist;
+  const denom = camZ - q.z;
+  const f = camZ / Math.max(denom, 0.35);
+  return { sx: cam.cx + q.x * cam.scale * f, sy: cam.cy - q.y * cam.scale * f, depth: q.z, scale2d: f };
+}
+// ---------- map ground treatments: NIGHT (dark ground, additive glow clouds, the default) and
+// PAPER (light warm ground, multiply-treated clouds). Pure rendering, zero economics. Toggle via
+// the HUD button or ?map=light. The chrome around the board stays the warm lodge either way. ----------
+const MAP_THEMES = {
+  night: {
+    key:'night', ground:'#0a0e14', fogBG:[10,14,20],
+    axis:'#847d70', gridRGB:[105,97,84], wallComfort:[90,167,176], wallPrice:[217,122,82],
+    cloudComposite:'lighter', cloudAlpha:[0.85,0.42,0.06], cloudColorScale:1,
+    segLabel:'#d8d1c6', firmLabel:'#efe9e1',
+    playerOutline:'#fff', rivalOutline:'rgba(255,255,255,0.3)',
+    anchorRGBA:'rgba(255,255,255,', shadowRGBA:'rgba(0,0,0,',
+    sphereHighlight:'#ffffff'
+  },
+  paper: {
+    key:'paper', ground:'#e5edf0', fogBG:[229,237,240],
+    axis:'#53626d', gridRGB:[122,136,146], wallComfort:[37,102,111], wallPrice:[200,85,43],
+    cloudComposite:'multiply', cloudAlpha:[0.72,0.42,0.08], cloudColorScale:0.74,
+    segLabel:'#19262f', firmLabel:'#19262f',
+    playerOutline:'#19262f', rivalOutline:'rgba(25,38,47,0.35)',
+    anchorRGBA:'rgba(25,38,47,', shadowRGBA:'rgba(25,38,47,',
+    sphereHighlight:'#ffffff'
+  }
+};
+let MAP_THEME = MAP_THEMES[['night','dark'].includes(new URLSearchParams(location.search).get('map')) ? 'night' : 'paper'];
+const CANVAS_MONO = '"JetBrains Mono",ui-monospace,Consolas,monospace';
+const CANVAS_BODY = '"Atkinson Hyperlegible",system-ui,sans-serif';
+const AXES = [
+  {name:'Terrain Challenge'},
+  {name:'Comfort / Amenities'},
+  {name:'Price Position'}
+];
+function toWorld(v){ return {x:(v[0]-0.5)*1.6, y:(v[1]-0.5)*1.6, z:(v[2]-0.5)*1.6}; }
+
+// Color grammar: firms are saturated ACTORS, segments are muted luminous ATMOSPHERE,
+// axes are neutral scaffolding. No firm hue may equal a segment hue (the old palette
+// had 4 exact collisions, which implied false firm-to-segment ownership).
+const FIRM_COLORS = {
+  RENEWER: '#e2743f', FORTRESS: '#d64f63', VOLUME: '#54bd6f',
+  PREMIUM: '#e8c44d', NETWORK: '#4f9de6', COST: '#3fc2bd',
+};
+const SEG_COLORS = {
+  CORE:     [142,180,222],   // steel blue, expert cold-mountain
+  DESTFAM:  [222,190,142],   // warm sand, family daylight
+  DAYTRIP:  [148,202,170],   // sage, the fading feeder
+  LUXURY:   [186,158,222],   // heather violet, rarefied air
+  PARKPIPE: [210,150,160],   // dusty rose, youth culture
+  BEGINNER: [150,190,205],   // pale cyan-gray, the funnel
+};
+// short glyph tags for the bet-ownership badges drawn next to a firm's label
+const BET_BADGES = {
+  snowmaking: '❄', megapass: '⛰', exclusivity: '⬢', costRedesign: '⚙', valuesBrand: '❤',
+};
+
+const BUDGET = 28;
+
+let engineState = null;
+let spend = { runs:0, lodging:0, events:0, marketing:0, opsCost:8 };
+let dayPassPrice = 0.5, lodgePrice = 0.5;
+let selectedBet = null; // strategic bet the player has queued to buy this season, or null
+
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+function resize(){
+  const wrap = document.getElementById('boardWrap');
+  canvas.width = wrap.clientWidth * devicePixelRatio;
+  canvas.height = wrap.clientHeight * devicePixelRatio;
+  canvas.style.width = wrap.clientWidth+'px';
+  canvas.style.height = wrap.clientHeight+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+let cam = {yaw:1.15, pitch:0.42, dist:3.4, cx:0, cy:0, scale:0};
+let camTarget = null;
+let idleRotate = true;
+let dragging=false, lastX=0, lastY=0;
+
+canvas.addEventListener('mousedown', e=>{ dragging=true; idleRotate=false; camTarget=null; lastX=e.clientX; lastY=e.clientY; canvas.classList.add('dragging'); });
+window.addEventListener('mouseup', ()=>{ dragging=false; canvas.classList.remove('dragging'); });
+window.addEventListener('mousemove', e=>{
+  if (!dragging) return;
+  const dx = e.clientX-lastX, dy = e.clientY-lastY;
+  if (BOARD_VIEW === 'mountain') {
+    MountainGL.setYaw(MountainGL.getYaw() + dx*0.008);
+  } else {
+    cam.yaw += dx*0.008;
+    cam.pitch = Math.max(-1.1, Math.min(1.1, cam.pitch + dy*0.008));
+  }
+  lastX=e.clientX; lastY=e.clientY;
+});
+canvas.addEventListener('click', e=>{
+  if (Math.abs(e.movementX)>2) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  checkSegClick(mx,my);
+});
+
+let lastSegScreens = [];
+// cloud size animation: displayed mass eases toward the actual engine mass each frame (mission
+// item 4, "growing/fading should also be VISIBLE") rather than snapping instantly on Lock In.
+const segMassAnim = {};
+function currentSegments(){
+  const s = Math.min(engineState.s, CONFIG.SEASONS - 1);
+  const { shares, convertOut } = segMassShares(s, engineState.env);
+  return SEGMENTS.map(seg => {
+    if (segMassAnim[seg.id] == null) segMassAnim[seg.id] = shares[seg.id];
+    return { id: seg.id, name: seg.name, need: segVecAt(seg, s), mass: shares[seg.id], displayMass: segMassAnim[seg.id],
+      color: SEG_COLORS[seg.id], outflow: seg.id === 'BEGINNER' ? convertOut : undefined };
+  });
+}
+function tickSegMassAnim(){
+  const segs = currentSegments();
+  segs.forEach(seg => { segMassAnim[seg.id] += (seg.mass - segMassAnim[seg.id]) * 0.06; });
+}
+
+function checkSegClick(mx,my){
+  let best=null, bestD=999;
+  lastSegScreens.forEach(s=>{
+    const d = Math.hypot(s.sx-mx, s.sy-my);
+    if (d<s.r+8 && d<bestD){ bestD=d; best=s; }
+  });
+  const popup = document.getElementById('segPopup');
+  if (best){
+    popup.style.display='block';
+    popup.style.left = (best.sx+16)+'px';
+    popup.style.top = (best.sy-10)+'px';
+    const you = engineState.resorts[engineState.playerIdx];
+    let gateNote = '';
+    if (best.seg.need[1] > CONFIG.LODGE_GATE_MAX && !you.lodgeBuilt) {
+      gateNote = `<div class="gate">This segment wants more Comfort than your pre-Lodging ceiling allows (capped at ${(CONFIG.LODGE_GATE_MAX*100).toFixed(0)}%). Build Lodging to fully reach it, or contest it on terrain/price fit alone.</div>`;
+    }
+    let outflowNote = '';
+    if (best.seg.id === 'BEGINNER' && best.seg.outflow != null) {
+      outflowNote = `<div class="gate" style="color:var(--teal);">Conversion outflow this season: ${(best.seg.outflow*100).toFixed(1)}% of market mass graduates into Day-Trip Feeder and Destination Family.</div>`;
+    }
+    popup.innerHTML = `<div class="t">${best.seg.name} (mass share ${(best.seg.mass*100).toFixed(0)}%)</div>` +
+      AXES.map((ax,i)=>`<div class="barlabel"><span>${ax.name}</span><span>${Math.round(best.seg.need[i]*100)}</span></div><div class="bar"><i style="width:${best.seg.need[i]*100}%;"></i></div>`).join('') +
+      gateNote + outflowNote;
+    snapRotateTo(best.seg);
+  } else {
+    popup.style.display='none';
+  }
+}
+
+function snapRotateTo(seg){
+  const p = engineState.resorts[engineState.playerIdx].pos;
+  const dx = seg.need[0]-p[0], dz = seg.need[2]-p[2], dy = seg.need[1]-p[1];
+  const targetYaw = Math.atan2(dx, dz||0.001) + Math.PI;
+  const targetPitch = Math.max(-0.9, Math.min(0.9, 0.35 - dy*0.6));
+  camTarget = {yaw: targetYaw, pitch: targetPitch};
+  idleRotate = false;
+}
+
+// ---------- depth fog: distance is read off scale2d (perspective foreshortening factor
+// already computed by project()), so near objects/lines read brighter and full-color, far
+// ones dimmer and pulled toward the background color. Calibrated to this scene's camera
+// (dist 3.4, world extents about +/-0.8 per axis) so t sits in [0,1] across the board. ----------
+const FOG_LO = 0.62, FOG_HI = 1.55, FOG_MIN_ALPHA = 0.22;
+function fogT(scale2d){ return clamp01((scale2d - FOG_LO) / (FOG_HI - FOG_LO)); }
+function fogAlpha(scale2d, baseAlpha){ const t = fogT(scale2d); return baseAlpha * (FOG_MIN_ALPHA + (1-FOG_MIN_ALPHA)*t); }
+function fogRGB(r,g,b, scale2d){
+  const FOG_BG = MAP_THEME.fogBG;
+  const t = fogT(scale2d), mixT = 0.6*(1-t);
+  return `rgb(${Math.round(r*(1-mixT)+FOG_BG[0]*mixT)},${Math.round(g*(1-mixT)+FOG_BG[1]*mixT)},${Math.round(b*(1-mixT)+FOG_BG[2]*mixT)})`;
+}
+
+function drawAxisLine(dirVec, len, colorStr, label){
+  const p0 = project(toWorld([0.5-dirVec[0]*len,0.5-dirVec[1]*len,0.5-dirVec[2]*len]), cam);
+  const p1 = project(toWorld([0.5+dirVec[0]*len,0.5+dirVec[1]*len,0.5+dirVec[2]*len]), cam);
+  const grad = ctx.createLinearGradient(p0.sx,p0.sy,p1.sx,p1.sy);
+  grad.addColorStop(0, colorStr); grad.addColorStop(1, colorStr);
+  ctx.strokeStyle = grad; ctx.lineWidth=1.3;
+  ctx.globalAlpha = fogAlpha((p0.scale2d+p1.scale2d)/2, 0.6);
+  ctx.beginPath(); ctx.moveTo(p0.sx,p0.sy); ctx.lineTo(p1.sx,p1.sy); ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.fillStyle = colorStr; ctx.font='10px '+CANVAS_MONO;
+  ctx.fillText(label.toUpperCase(), p1.sx+6, p1.sy);
+}
+// Ground plane (comfort = 0, the actual floor of that axis) plus two faint back walls
+// (terrain = 0 and price = 1) so the box reads as a volume, not a flat plane, at any camera
+// angle. Each line segment is fogged by its own average distance from camera.
+function drawFoggedLine(wa, wb, rgb, baseAlpha, width){
+  const a = project(wa, cam), b = project(wb, cam);
+  ctx.strokeStyle = fogRGB(rgb[0],rgb[1],rgb[2], (a.scale2d+b.scale2d)/2);
+  ctx.globalAlpha = fogAlpha((a.scale2d+b.scale2d)/2, baseAlpha);
+  ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+function drawGrid(){
+  const N=6;
+  for (let i=0;i<=N;i++){
+    const t=i/N;
+    drawFoggedLine(toWorld([t,0,0]), toWorld([t,0,1]), MAP_THEME.gridRGB, 0.32, 1);
+    drawFoggedLine(toWorld([0,0,t]), toWorld([1,0,t]), MAP_THEME.gridRGB, 0.32, 1);
+  }
+  // back walls: faint verticals anchoring the comfort axis, drawn at the far edges of
+  // terrain (x=0) and price (z=1) so the box reads as a volume. Comfort wall = glacier teal,
+  // price wall = rust (the warm-palette accents carried into the scene itself).
+  const M=4;
+  for (let i=0;i<=M;i++){
+    const t=i/M;
+    drawFoggedLine(toWorld([0,t,0]), toWorld([0,t,1]), MAP_THEME.wallComfort, 0.10, 1);
+    drawFoggedLine(toWorld([0,0,t]), toWorld([0,1,t]), MAP_THEME.wallComfort, 0.10, 1);
+    drawFoggedLine(toWorld([0,t,1]), toWorld([1,t,1]), MAP_THEME.wallPrice, 0.10, 1);
+    drawFoggedLine(toWorld([t,0,1]), toWorld([t,1,1]), MAP_THEME.wallPrice, 0.10, 1);
+  }
+}
+function shade(hex, amt){
+  const c = hex.replace('#','');
+  const num = parseInt(c,16);
+  let r=(num>>16)+amt, g=((num>>8)&0xff)+amt, b=(num&0xff)+amt;
+  r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+  return `rgb(${r},${g},${b})`;
+}
+function arrowHead(p0,p1,color){
+  const ang = Math.atan2(p1.sy-p0.sy, p1.sx-p0.sx);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(p1.sx, p1.sy);
+  ctx.lineTo(p1.sx - 8*Math.cos(ang-0.4), p1.sy - 8*Math.sin(ang-0.4));
+  ctx.lineTo(p1.sx - 8*Math.cos(ang+0.4), p1.sy - 8*Math.sin(ang+0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+let pendingGhostTarget = null; // set by updateGhostAndMemos, drawn each frame for the player
+
+function render(){
+  const w = canvas.width/devicePixelRatio, h = canvas.height/devicePixelRatio;
+  cam.cx = w/2; cam.cy = h/2 + 10; cam.scale = Math.min(w,h)*0.34;
+
+  ctx.fillStyle = MAP_THEME.ground;
+  ctx.fillRect(0,0,w,h);
+
+  if (!engineState) return;
+
+  if (camTarget){
+    cam.yaw += (camTarget.yaw - cam.yaw) * 0.09;
+    cam.pitch += (camTarget.pitch - cam.pitch) * 0.09;
+    if (Math.abs(camTarget.yaw-cam.yaw)<0.01 && Math.abs(camTarget.pitch-cam.pitch)<0.01) camTarget=null;
+  } else if (idleRotate) cam.yaw += 0.0018;
+
+  drawGrid();
+  drawAxisLine([1,0,0], 0.55, MAP_THEME.axis, AXES[0].name);
+  drawAxisLine([0,1,0], 0.55, MAP_THEME.axis, AXES[1].name);
+  drawAxisLine([0,0,1], 0.55, MAP_THEME.axis, AXES[2].name);
+
+  tickSegMassAnim();
+  const segs = currentSegments();
+  let drawables = [];
+  lastSegScreens = [];
+
+  segs.forEach(seg=>{
+    const center = project(toWorld(seg.need), cam);
+    // nonlinear so a 30%-mass segment and a 78%-mass segment read clearly apart, not just a
+    // few px of difference; scaled by scale2d so a distant cloud also shrinks like everything else.
+    // Radius uses the eased displayMass (segMassAnim), not the raw target mass, so growth/fade
+    // reads as a visible size change over a few frames rather than a snap on Lock In.
+    const dm = segMassAnim[seg.id] == null ? seg.mass : segMassAnim[seg.id];
+    const rBase = 14 + Math.pow(dm, 1.6) * 95;
+    const r = rBase * center.scale2d;
+    drawables.push({type:'seg', seg, center, r, depth:center.depth});
+    lastSegScreens.push({sx:center.sx, sy:center.sy, r, seg});
+  });
+
+  // sphere size = capacity base + a live sales pulse (mission item 6): cap stays the persistent,
+  // comparable-across-firms baseline (widened swing, CAP_GROWTH_MULT), while salesPulse gives a
+  // visible short-term "having a good season" wobble off servedThisSeason vs trailing baseline.
+  // Never keyed to cash, so the hidden final ranking stays hidden.
+  engineState.resorts.forEach(f=>{
+    const p = project(toWorld(f.pos), cam);
+    const capFactor = Math.sqrt(clamp(f.cap, 40, 260) / 100);
+    const baseline = f._servedBaseline || f._servedThisSeason || 0;
+    const salesPulse = baseline > 0
+      ? 1 + 0.15 * clamp((f._servedThisSeason || 0) / baseline - 1, -0.6, 0.6)
+      : 1;
+    const r = 12 * capFactor * salesPulse;
+    drawables.push({type:'firm', firm:f, p, r, depth:p.depth});
+  });
+
+  // Mega-Pass hub: a shared node drawn at the mainstream/low-price region, with a tether line
+  // from every firm that has joined a pass to it (mission item 4: board expression, "no invisible
+  // stat tweaks"). Only drawn once at least one firm holds the bet.
+  const megapassFirms = engineState.resorts.filter(f => f.bets && f.bets.megapass);
+  if (megapassFirms.length) {
+    const hubPos = [CONFIG.POS_MAIN, 0.18, CONFIG.PRICE_MAIN];
+    const hubP = project(toWorld(hubPos), cam);
+    megapassFirms.forEach(f => {
+      const fp = project(toWorld(f.pos), cam);
+      ctx.strokeStyle = 'rgba(79,157,230,0.45)'; ctx.lineWidth = 1.4; ctx.setLineDash([2,4]);
+      ctx.beginPath(); ctx.moveTo(fp.sx, fp.sy); ctx.lineTo(hubP.sx, hubP.sy); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+    ctx.fillStyle = 'rgba(79,157,230,0.85)';
+    ctx.beginPath(); ctx.moveTo(hubP.sx, hubP.sy-9); ctx.lineTo(hubP.sx+9, hubP.sy+7); ctx.lineTo(hubP.sx-9, hubP.sy+7); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = MAP_THEME.firmLabel; ctx.lineWidth = 1; ctx.stroke();
+    ctx.font = '9px '+CANVAS_MONO; ctx.fillStyle = MAP_THEME.firmLabel;
+    ctx.fillText('PASS HUB', hubP.sx+11, hubP.sy+3);
+  }
+
+  drawables.sort((a,b)=> a.depth-b.depth);
+
+  drawables.forEach(d=>{
+    if (d.type==='seg'){
+      const seg = d.seg;
+      const cs = MAP_THEME.cloudColorScale;
+      const cr = Math.round(seg.color[0]*cs), cg = Math.round(seg.color[1]*cs), cb = Math.round(seg.color[2]*cs);
+      const segFog = fogT(d.center.scale2d);
+      const grad = ctx.createRadialGradient(d.center.sx,d.center.sy,1, d.center.sx,d.center.sy,d.r);
+      const fogF = 0.8+0.2*segFog;
+      const [a0,a1,a2] = MAP_THEME.cloudAlpha;
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${(a0*fogF).toFixed(3)})`);
+      grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${(a1*fogF).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${cr},${cg},${cb},${(a2*fogF).toFixed(3)})`);
+      ctx.fillStyle = grad;
+      ctx.globalCompositeOperation = MAP_THEME.cloudComposite;
+      ctx.beginPath(); ctx.arc(d.center.sx, d.center.sy, d.r, 0, Math.PI*2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.6*(0.8+0.2*segFog)).toFixed(3)})`; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(d.center.sx, d.center.sy, d.r, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = MAP_THEME.segLabel; ctx.font='11px '+CANVAS_BODY;
+      ctx.fillText(seg.name+' ('+(seg.mass*100).toFixed(0)+'%)', d.center.sx - d.r*0.6, d.center.sy - d.r - 5);
+    } else {
+      const f = d.firm;
+      const decay = clamp01(1 - (f._trackOutPen||0));
+      const rr = d.r * Math.max(0.6, decay) * d.p.scale2d;
+
+      // ground anchor: a thin line straight down to the comfort=0 floor plus a small flattened
+      // shadow ellipse there. This is the strongest single depth cue in the scene: it pins the
+      // sphere to a location on the ground plane instead of letting it float ambiguously in space.
+      const groundPt = project(toWorld([f.pos[0], 0, f.pos[2]]), cam);
+      const groundFog = fogT(groundPt.scale2d);
+      ctx.strokeStyle = MAP_THEME.anchorRGBA + (0.32*(0.3+0.7*groundFog)).toFixed(3) + ')';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(d.p.sx, d.p.sy); ctx.lineTo(groundPt.sx, groundPt.sy); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = MAP_THEME.shadowRGBA + (0.5*(0.3+0.7*groundFog)).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.ellipse(groundPt.sx, groundPt.sy, rr*0.9, rr*0.32, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      const color = firmColor(f);
+      const grad = ctx.createRadialGradient(d.p.sx-d.r*0.3, d.p.sy-d.r*0.3, 1, d.p.sx, d.p.sy, d.r*d.p.scale2d);
+      grad.addColorStop(0, MAP_THEME.sphereHighlight);
+      grad.addColorStop(0.25, color);
+      grad.addColorStop(1, shade(color, -40));
+      ctx.globalAlpha = Math.max(0.45, decay);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(d.p.sx, d.p.sy, rr, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = f.isPlayer ? MAP_THEME.playerOutline : MAP_THEME.rivalOutline;
+      ctx.lineWidth = f.isPlayer ? 2.4 : 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // moat rings (dwell): concentric rings scaled to f._dwell (capped at 4), in the firm's own
+      // color at partial opacity, spaced ~5px beyond the sphere radius. Two-sided bet holders
+      // (Exclusivity/Values Brand) earn rings faster via TWOSIDED_DWELL_BOOST in the engine.
+      const ringCount = Math.min(4, Math.floor((f._dwell || 0) / 2));
+      if (ringCount > 0) {
+        for (let k = 1; k <= ringCount; k++) {
+          ctx.beginPath();
+          ctx.ellipse(d.p.sx, d.p.sy, rr + k*5, (rr + k*5) * 0.42, 0, 0, Math.PI*2);
+          ctx.strokeStyle = color + 'aa';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+      }
+
+      // severed-spillover mark (Skier-Only Exclusivity): a short dark dashed stroke cut across
+      // the anchor line toward Destination Family's terrain position, marking the channel severed.
+      if (f.bets && f.bets.exclusivity) {
+        const destAnchor = SEGMENTS.find(sg => sg.id === 'DESTFAM');
+        if (destAnchor) {
+          const dp = project(toWorld(segVecAt(destAnchor, Math.min(engineState.s, CONFIG.SEASONS-1))), cam);
+          const midx = d.p.sx + (dp.sx - d.p.sx) * 0.18, midy = d.p.sy + (dp.sy - d.p.sy) * 0.18;
+          ctx.strokeStyle = 'rgba(224,90,80,0.85)'; ctx.lineWidth = 2.4;
+          ctx.beginPath(); ctx.moveTo(d.p.sx, d.p.sy); ctx.lineTo(midx, midy); ctx.stroke();
+          ctx.save(); ctx.translate((d.p.sx+midx)/2, (d.p.sy+midy)/2);
+          const ang = Math.atan2(midy-d.p.sy, midx-d.p.sx) + Math.PI/2;
+          ctx.rotate(ang); ctx.beginPath(); ctx.moveTo(-4,-4); ctx.lineTo(4,4); ctx.moveTo(4,-4); ctx.lineTo(-4,4);
+          ctx.strokeStyle = 'rgba(224,90,80,0.95)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+        }
+      }
+      // values-brand repel arc: a faint dashed arc bowing away from the mainstream (DESTFAM/DAYTRIP)
+      // direction, marking the partial (not severed) repel.
+      if (f.bets && f.bets.valuesBrand) {
+        const dest = SEGMENTS.find(sg => sg.id === 'DESTFAM');
+        if (dest) {
+          const dp = project(toWorld(segVecAt(dest, Math.min(engineState.s, CONFIG.SEASONS-1))), cam);
+          ctx.strokeStyle = 'rgba(216,168,63,0.55)'; ctx.lineWidth = 1.6; ctx.setLineDash([3,4]);
+          ctx.beginPath(); ctx.moveTo(d.p.sx, d.p.sy);
+          ctx.quadraticCurveTo(d.p.sx + (dp.sx-d.p.sx)*0.3 - 14, d.p.sy + (dp.sy-d.p.sy)*0.3, d.p.sx + (dp.sx-d.p.sx)*0.22, d.p.sy + (dp.sy-d.p.sy)*0.22);
+          ctx.stroke(); ctx.setLineDash([]);
+        }
+      }
+
+      ctx.fillStyle = MAP_THEME.firmLabel;
+      ctx.font = f.isPlayer? ('bold 12px '+CANVAS_BODY):('11px '+CANVAS_BODY);
+      const stackN = drawables.filter(o => o.type==='firm' && o.firm.i < f.i && Math.hypot(o.p.sx-d.p.sx, o.p.sy-d.p.sy) < 10).length;
+      ctx.fillText((f.isPlayer?'YOU: ':'')+nameOf(f), d.p.sx+d.r+4, d.p.sy+4 + stackN*12);
+      // bet ownership badges: short glyph tags next to the firm label, one per owned bet.
+      if (f.bets) {
+        const owned = Object.keys(BETS).filter(k => f.bets[k]);
+        if (owned.length) {
+          ctx.font = '9px '+CANVAS_MONO; ctx.fillStyle = MAP_THEME.key==='paper' ? 'rgba(169,121,31,0.95)' : 'rgba(216,168,63,0.9)';
+          const badgeStr = owned.map(k => BET_BADGES[k] || k[0].toUpperCase()).join(' ');
+          ctx.fillText(badgeStr, d.p.sx+d.r+4, d.p.sy+28);
+        }
+      }
+      if (f._stillSeasons >= 1){
+        ctx.font = '9px '+CANVAS_MONO; ctx.fillStyle = 'rgba(224,90,80,0.9)';
+        ctx.fillText('still '+f._stillSeasons, d.p.sx+d.r+4, d.p.sy-9);
+      }
+      if (f.lodgeBuilt){
+        ctx.font = '9px '+CANVAS_MONO; ctx.fillStyle = MAP_THEME.key==='paper' ? 'rgba(37,102,111,0.95)' : 'rgba(90,167,176,0.9)';
+        ctx.fillText('lodge open', d.p.sx+d.r+4, d.p.sy+16);
+      }
+
+      if (f.isPlayer && pendingGhostTarget){
+        const ip = project(toWorld(pendingGhostTarget), cam);
+        const ghostGold = MAP_THEME.key==='paper' ? '169,121,31' : '216,168,63';
+        ctx.strokeStyle = 'rgba('+ghostGold+',0.6)';
+        ctx.setLineDash([5,4]); ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(d.p.sx,d.p.sy); ctx.lineTo(ip.sx,ip.sy); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='rgba('+ghostGold+',0.9)';
+        ctx.beginPath(); ctx.arc(ip.sx, ip.sy, 4, 0, Math.PI*2); ctx.fill();
+      }
+      if (f.isPlayer && f._realizedDelta && f._justResolved && f._preResolvePos){
+        const realTarget = [
+          clamp01(f._preResolvePos[0]+f._realizedDelta[0]),
+          clamp01(f._preResolvePos[1]+f._realizedDelta[1]),
+          clamp01(f._preResolvePos[2]+f._realizedDelta[2])
+        ];
+        const rp0 = project(toWorld(f._preResolvePos), cam);
+        const rp1 = project(toWorld(realTarget), cam);
+        ctx.strokeStyle = firmColor(f); ctx.lineWidth=2.4;
+        ctx.beginPath(); ctx.moveTo(rp0.sx,rp0.sy); ctx.lineTo(rp1.sx,rp1.sy); ctx.stroke();
+        arrowHead(rp0, rp1, firmColor(f));
+      }
+    }
+  });
+}
+function loop(){ if (BOARD_VIEW === 'mountain') renderMountain(); else render(); requestAnimationFrame(loop); }
+
+// ==========================================================================
+// ---- seats, names, colours ----
+// ==========================================================================
+// One saturated colour per seat. Student seats cycle the warm set; the two named rivals keep the
+// hues the single-player build gave their archetypes so anyone who saw that build recognises them.
+const SEAT_COLORS = ['#e2743f','#54bd6f','#e8c44d','#3fc2bd','#d97ad4','#8fb3ff','#f0a35c','#a4d65e','#4f9de6','#d64f63'];
+function firmColor(f){ return SEAT_COLORS[f.i % SEAT_COLORS.length]; }
+function nameOf(f){ const t = TEAM_BY_SEAT[f.i]; return t ? t.name : 'Seat ' + (f.i + 1); }
+
+// ==========================================================================
+// ---- shared-game state ----
+// ==========================================================================
+let GAME = null;            // powder_games row
+let TEAMS = [];             // powder_teams rows for this game
+let TEAM_BY_SEAT = {};
+let ME = null;              // my powder_teams row
+let MY_SEAT = null;
+let SUBMITTED_SEASON = -1;  // last season I have a season_submitted row for
+let LAST_APPLIED_SEASON = -1;
+let endOverlayDismissed = false; // once the student closes the debrief, syncGame's poll must not force it back open
+let stageGuess = null;
+let PHASE_SEQ = 0;          // monotonic guard so a slow render never paints a stale phase (ranch pattern)
+let pollTimer = null;
+const JOIN_KEY = 'powder_join_v1';
+
+function note(text, err){ const el = document.getElementById('ctlNote'); el.textContent = text || ''; el.style.color = err ? 'var(--danger)' : 'var(--dim)'; }
+function jmsg(text, err){ const el = document.getElementById('joinMsg'); el.textContent = text || ''; el.className = 'msgline' + (err ? ' err' : ''); }
+function showOverlay(id){ ['seatOverlay','waitOverlay','introOverlay','endOverlay'].forEach(o => document.getElementById(o).classList.toggle('hidden', o !== id)); }
+function hideOverlays(){ ['seatOverlay','waitOverlay','endOverlay'].forEach(o => document.getElementById(o).classList.add('hidden')); }
+
+async function logDecision(kind, payload, season){
+  await supa.from('powder_decisions').insert({ game_id: GAME.id, team_id: ME ? ME.id : null, season: season == null ? GAME.season : season, kind, payload });
+}
+
+// ==========================================================================
+// ---- join / claim / rejoin ----
+// ==========================================================================
+let JOIN_GAME = null;
+document.getElementById('joinBtn').addEventListener('click', findGame);
+document.getElementById('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') findGame(); });
+document.getElementById('teamNameIn').addEventListener('keydown', e => { if (e.key === 'Enter') findGame(); });
+
+async function findGame(){
+  const code = document.getElementById('joinCode').value.trim().toUpperCase();
+  const name = document.getElementById('teamNameIn').value.trim();
+  if (code.length !== 5) return jmsg('The join code is five letters.', true);
+  if (!name) return jmsg('Name your resort first.', true);
+  const { data, error } = await supa.from('powder_games').select('*').eq('join_code', code).limit(1);
+  if (error) return jmsg('Could not reach the game: ' + error.message, true);
+  if (!data || !data.length) return jmsg('No game with that code. Check it with your instructor.', true);
+  JOIN_GAME = data[0];
+  if (JOIN_GAME.phase !== 'lobby') return jmsg('That game has already started. Ask the instructor to seat you.', true);
+  jmsg('Claiming a seat...');
+  await claimLowestSeat(name);
+}
+
+// Auto-seat: no seat picker. Take the lowest open seat; on a collision (another browser landed
+// on the same seat, or the same name, in the same instant) re-query and retry.
+async function claimLowestSeat(name){
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { data: existing, error: qerr } = await supa.from('powder_teams').select('seat_index').eq('game_id', JOIN_GAME.id);
+    if (qerr) return jmsg('Could not reach the game: ' + qerr.message, true);
+    const taken = new Set((existing || []).map(t => t.seat_index));
+    let seat = -1;
+    for (let i = 0; i < TEAM_SEATS; i++) { if (!taken.has(i)) { seat = i; break; } }
+    if (seat === -1) return jmsg('This table is full. Ask your instructor for another seat.', true);
+    const { data, error } = await supa.from('powder_teams')
+      .insert({ game_id: JOIN_GAME.id, seat_index: seat, name, is_ai: false, state: null }).select().single();
+    if (!error) {
+      ME = data; MY_SEAT = data.seat_index; GAME = JOIN_GAME;
+      try { localStorage.setItem(JOIN_KEY, JSON.stringify({ gameId: GAME.id, teamId: ME.id, token: ME.join_token, code: GAME.join_code })); } catch (e) {}
+      await logDecision('team_joined', { seat_index: MY_SEAT, name }, 0);
+      return enterGame();
+    }
+    if (/name/i.test(error.message) && /unique|duplicate/i.test(error.message)) {
+      return jmsg('That resort name is already taken at this table. Pick another name.', true);
+    }
+    if (/seat_index/i.test(error.message) || /unique|duplicate/i.test(error.message)) continue; // seat taken a moment ago, retry
+    return jmsg('Could not claim a seat: ' + error.message, true);
+  }
+  jmsg('Could not claim a seat after several tries. Try again in a moment.', true);
+}
+
+// A refresh, a dropped wifi connection, or a closed laptop must not lose the seat. The join
+// token in localStorage re-identifies this browser as the same team. (The ranch client did not
+// do this and it is the one failure a live class cannot recover from mid-game.)
+async function tryRejoin(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(JOIN_KEY) || 'null'); } catch (e) {}
+  if (!saved || !saved.teamId) return false;
+  const { data: t } = await supa.from('powder_teams').select('*').eq('id', saved.teamId).eq('join_token', saved.token).limit(1);
+  if (!t || !t.length) return false;
+  const { data: g } = await supa.from('powder_games').select('*').eq('id', saved.gameId).limit(1);
+  if (!g || !g.length || g[0].status === 'done' && g[0].phase !== 'ended') return false;
+  ME = t[0]; MY_SEAT = ME.seat_index; GAME = g[0];
+  return true;
+}
+
+function forgetJoin(){ try { localStorage.removeItem(JOIN_KEY); } catch (e) {} }
+
+// ==========================================================================
+// ---- game loop: subscribe, poll, apply ----
+// ==========================================================================
+function enterGame(){
+  document.getElementById('teamName').textContent = ME.name;
+  hideOverlays();
+  supa.channel('pgame-' + GAME.id)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'powder_games', filter: 'id=eq.' + GAME.id }, () => syncGame())
+    .subscribe();
+  supa.channel('pteams-' + GAME.id)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'powder_teams', filter: 'game_id=eq.' + GAME.id }, () => syncGame())
+    .subscribe();
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(syncGame, POLL_MS);
+  resize();
+  syncGame();
+}
+
+async function syncGame(){
+  const seq = ++PHASE_SEQ;
+  const [{ data: g }, { data: ts }] = await Promise.all([
+    supa.from('powder_games').select('*').eq('id', GAME.id).single(),
+    supa.from('powder_teams').select('*').eq('game_id', GAME.id).order('seat_index'),
+  ]);
+  if (seq !== PHASE_SEQ) return;   // a newer sync already ran; never paint a stale phase
+  if (!g) return;
+  GAME = g; TEAMS = ts || []; TEAM_BY_SEAT = {}; TEAMS.forEach(t => TEAM_BY_SEAT[t.seat_index] = t);
+  const mine = TEAMS.find(t => t.id === ME.id); if (mine) ME = mine;
+
+  if (GAME.phase === 'lobby') return showLobbyWait();
+  if (!ME.state) return showLobbyWait('The instructor is dealing seats. One moment.');
+
+  const changedSeason = GAME.season !== LAST_APPLIED_SEASON;
+  buildMirror();
+  if (changedSeason) await onNewSeason();
+  if (GAME.phase === 'ended') { if (!endOverlayDismissed) showEnd(); return; }
+  hideOverlays();
+  await refreshSubmitState();
+}
+
+function showLobbyWait(text){
+  document.getElementById('waitTitle').textContent = 'You are in: ' + ME.name;
+  document.getElementById('waitText').textContent = text || 'Waiting for the instructor to open season 1. Keep this tab open; the board appears on its own.';
+  const rows = [];
+  for (let i = 0; i < TEAM_SEATS; i++) { const t = TEAM_BY_SEAT[i]; rows.push('Seat ' + (i + 1) + ': ' + (t ? (t.is_ai ? t.name + ' (AI)' : t.name) : 'open')); }
+  RIVALS.forEach((r, k) => rows.push('Seat ' + (TEAM_SEATS + k + 1) + ': ' + r.name + ' (AI, ' + r.note + ')'));
+  document.getElementById('waitList').innerHTML = rows.map(r => '<div>' + r + '</div>').join('');
+  showOverlay('waitOverlay');
+}
+
+// The local mirror of the shared world. Shape matches what the moved render pipeline expects
+// (resorts[], s, env, playerIdx, log, tickerLines) so that code did not have to change.
+function buildMirror(){
+  const prev = engineState;
+  const resorts = [];
+  for (let i = 0; i < TEAM_SEATS + RIVALS.length; i++) {
+    const t = TEAM_BY_SEAT[i];
+    const r = t && t.state ? t.state : null;
+    if (!r) continue;
+    r.i = i; r.isPlayer = (i === MY_SEAT);
+    if (prev && prev.resorts) {
+      const old = prev.resorts.find(x => x.i === i);
+      if (old && r.isPlayer) { r._preResolvePos = old._preResolvePos; r._justResolved = old._justResolved; }
+    }
+    resorts.push(r);
+  }
+  engineState = {
+    resorts, s: GAME.season, playerIdx: resorts.findIndex(r => r.i === MY_SEAT),
+    env: { growthScale: GAME.world.growthScale, chasmScale: GAME.world.chasmScale, inflection: GAME.world.inflection },
+    log: prev ? prev.log : [], tickerLines: prev ? prev.tickerLines : [],
+  };
+}
+
+async function onNewSeason(){
+  const p = engineState.resorts[engineState.playerIdx];
+  const s = GAME.season;
+  let didResolve = false;
+  if (LAST_APPLIED_SEASON >= 0 && s > LAST_APPLIED_SEASON) {
+    // a season just resolved: draw the realized arrow from where we were to where we landed
+    const hist = p.posHistory || [];
+    p._preResolvePos = hist.length >= 2 ? hist[hist.length - 2] : (p._realizedDelta ? p.pos.map((v, k) => v - p._realizedDelta[k]) : null);
+    p._justResolved = !!p._preResolvePos;
+    narrateSeason(p, s - 1);
+    spend = { runs:0, lodging:0, events:0, marketing:0, opsCost:8, hire:0 };
+    selectedBet = null; stageGuess = null;
+    document.getElementById('rationale').value = '';
+    setBoardView('mountain'); // inits MountainGL lazily if this is the first time Mountain has shown
+    showMtnCaption('Season ' + s + ' resolved. Here is what you built.');
+    MountainGL.setYaw(0.3); // the lodge sits at world angle 0; 0.3 is the model's camera-facing centre
+    mtnFreezeUntil = performance.now() + 4000;
+    didResolve = true;
+  } else if (LAST_APPLIED_SEASON < 0 && s === 0) {
+    document.getElementById('introOverlay').classList.remove('hidden');
+  } else if (LAST_APPLIED_SEASON < 0 && s > 0) {
+    // rejoined mid-game (refresh, dropped wifi): the season log lived in the old tab, so rebuild
+    // the world-level lines (weather, segment trends) for every season already played. The
+    // per-resort lines (understaffed, stranded, war cost) are only known for the latest season,
+    // so those come back for that one alone.
+    for (let k = 0; k < s - 1; k++) narrateSeason(p, k, true);
+    narrateSeason(p, s - 1);
+  }
+  LAST_APPLIED_SEASON = s;
+  document.getElementById('seasonNum').textContent = Math.min(s + 1, CONFIG.SEASONS);
+  document.getElementById('cashNum').textContent = '$' + p.cash.toFixed(0);
+  document.getElementById('profitNum').textContent = '$' + (p.profit || 0).toFixed(0);
+  document.getElementById('repNum').textContent = p.rep.toFixed(2);
+  document.getElementById('lockBtn').textContent = 'LOCK IN SEASON ' + Math.min(s + 1, CONFIG.SEASONS);
+  if (GAME.phase !== 'ended') { renderLevers(); renderStageRow(); }
+  renderDossiers(); updateReport(); updateLogStrip();
+  // on resolve, the board stays on Mountain for the reveal (setBoardView already ran above); only
+  // the #side step resets to READ. Any other case (first load, rejoin) just resets both normally.
+  showStep(0, { keepView: didResolve });
+}
+
+// Season narration, rebuilt from the state the instructor wrote back plus the world trace.
+// The single-player build generated these lines inside its own stepSeason; here the engine runs
+// elsewhere, so the same teaching beats are read off the resolved state after the fact.
+function narrateSeason(p, s, worldOnly){
+  const lines = [];
+  const snow = (GAME.world.snowTrace || [])[s];
+  if (snow) lines.push({ cls:'weather', text: 'Weather: ' + snow + (snow !== 'normal' ? ' (yield x' + CONFIG.snow[snow].toFixed(2) + ' on the weather-exposed share of demand)' : '') + '.' });
+  if (!worldOnly && snow === 'drought' && (p._spendEvents || 0) > 0) lines.push({ cls:'weather', text: 'Drought hedge: your Summer Events revenue paid out at x' + CONFIG.EVENTS_DROUGHT_MULT.toFixed(2) + ' this season.' });
+  if (!worldOnly && snow === 'drought' && p.bets && p.bets.snowmaking) lines.push({ cls:'weather', text: 'Snowmaking held: your drought demand loss was damped while exposed rivals shrank.' });
+  const prevMe = (engineState.log.length && engineState.log[engineState.log.length - 1]._lodge) || false;
+  if (worldOnly) { /* per-resort state for a past season is not available after a rejoin */ }
+  else if (p.lodgeBuilt && !prevMe) lines.push({ cls:'gate', text: 'Gate unlocked: Lodging is built. Your comfort ceiling is no longer capped, so the high-comfort Destination Family and Luxury crowds are fully reachable.' });
+  if (!worldOnly && p._stranded) lines.push({ cls:'decay', text: 'Stranded: your terrain reach gate closed faster than you moved. A stranded-appeal penalty hit this season.' });
+  if (!worldOnly && (p._stillSeasons || 0) >= 2) lines.push({ cls:'decay', text: 'Track-out: ' + p._stillSeasons + ' seasons with no real displacement. Fit is eroding (penalty ' + ((p._trackOutPen || 0) * 100).toFixed(0) + '%). Spend on any lever to reset the clock.' });
+  if (!worldOnly && p._util != null && p._util < 0.98) lines.push({ cls:'decay', text: 'Understaffed: you could only run ' + (p._util * 100).toFixed(0) + '% of your capacity. Skiers you had built for were turned away, and your reputation took the hit. Hire ahead of the build.' });
+  if (!worldOnly && (p._warCost || 0) > 0.1) lines.push({ cls:'contest', text: 'Poaching war: this season\'s raid exchange cost you $' + p._warCost.toFixed(1) + ' in margin.' });
+  if (!worldOnly && (p._raid || 0) < -0.01 || (p._raidC || 0) < -0.01) lines.push({ cls:'contest', text: 'A rival move pulled appeal share away from you this season.' });
+  const trace = (GAME.world.segTrace || []).find(t => t.season === s);
+  const tick = [];
+  if (trace) {
+    trace.segments.filter(seg => seg.trend !== 'stable').sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 3).forEach(seg => {
+      const dirWord = seg.delta >= 0 ? 'is growing' : 'is fading';
+      lines.push({ cls:'market', text: seg.name + ' ' + dirWord + ' (' + (seg.delta >= 0 ? '+' : '') + seg.delta.toFixed(2) + '). Mass share now ' + (seg.mass * 100).toFixed(0) + '%.' });
+      tick.push(seg.name.split('/')[0] + ' ' + dirWord);
+    });
+  }
+  if (!lines.length) lines.push({ cls:'market', text: 'A quiet season. Nothing moved hard enough to leave a mark.' });
+  engineState.log.push({ season: s + 1, lines, _lodge: !!p.lodgeBuilt });
+  engineState.tickerLines = tick;
+}
+
+async function refreshSubmitState(){
+  const { data } = await supa.from('powder_decisions').select('id').eq('game_id', GAME.id).eq('team_id', ME.id)
+    .eq('season', GAME.season).eq('kind', 'season_submitted').limit(1);
+  const locked = !!(data && data.length);
+  SUBMITTED_SEASON = locked ? GAME.season : SUBMITTED_SEASON;
+  const btn = document.getElementById('lockBtn');
+  btn.classList.toggle('locked', locked);
+  if (GAME.phase === 'resolve') { btn.disabled = true; note('The instructor is resolving the season.'); return; }
+  btn.textContent = (locked ? 'LOCKED. REVISE SEASON ' : 'LOCK IN SEASON ') + Math.min(GAME.season + 1, CONFIG.SEASONS);
+  note(locked ? 'Your plan is in. You can revise it until the instructor resolves the season.' : 'Nothing submitted yet for this season.');
+  updateBudget();
+}
+
+// ==========================================================================
+// ---- levers (moved from the single-player build, plus the labor lever) ----
+// ==========================================================================
+const BET_DESC = {
+  snowmaking:   'The Killington play: dampens both the drought downside and the powder upside on your weather-exposed demand. Insurance, not a jackpot.',
+  megapass:     'The Epic or Ikon play: instant wide reach into the mainstream segments, but it dilutes your own pricing control.',
+  exclusivity:  'The Alta and Deer Valley play: binds Core skiers tightly and severs your mainstream spillover on purpose.',
+  costRedesign: 'No demand pull. Cuts your running cost every season and holds your capacity through a price war.',
+  valuesBrand:  'The Aspen play: binds Core more mildly than Exclusivity, and actively repels some mainstream demand.',
+};
+function renderBetsHTML(){
+  const p = engineState.resorts[engineState.playerIdx];
+  const rows = Object.keys(BETS).map(k => {
+    const b = BETS[k];
+    const owned = p.bets[k];
+    const afford = p.cash >= b.cost;
+    const queued = selectedBet === k;
+    const label = owned ? 'Owned' : (queued ? 'Queued, click Lock In to buy' : (afford ? 'Buy this season' : 'Cannot afford'));
+    return `
+      <div class="lever">
+        <div class="t"><span>${b.label}</span><span class="cost">$${b.cost}</span></div>
+        <div class="l">${BET_DESC[k]}</div>
+        <button class="betBuyBtn" data-bet="${k}" ${owned ? 'disabled' : ''}
+          style="width:100%;padding:7px;border-radius:6px;border:1px solid ${queued?'var(--gold)':'var(--line2)'};
+          background:${owned?'var(--teal-d)':'var(--panel2)'};color:${owned?'#fdf3ec':'var(--text)'};
+          cursor:${owned?'not-allowed':'pointer'};font-family:var(--font-body);font-size:12.5px;opacity:${!owned&&!afford&&!queued?0.55:1};">
+          ${label}
+        </button>
+      </div>`;
+  }).join('');
+  return `<h2 style="margin-top:16px;">Strategic Bets</h2>
+    <div class="l" style="font-size:11.5px;color:var(--dim);margin:0 2px 8px;">One-time, permanent commitments. Owned bets show up on the board (badges, rings, tethers).</div>
+    ${rows}`;
+}
+function staffLine(p){
+  const req = p.cap * CONFIG.STAFF_PER_CAP * (p.lodgeBuilt ? CONFIG.LODGE_STAFF_MULT : 1);
+  const util = Math.min(1, p.staff / Math.max(1, req));
+  const pending = p._pendingHire ? ' (+' + (p._pendingHire * CONFIG.STAFF_PER_HIRE) + ' arriving next season)' : '';
+  return 'Crew ' + p.staff.toFixed(0) + pending + ' against ' + req.toFixed(0) + ' needed to run your capacity: ' + (util * 100).toFixed(0) + '% staffed. Payroll $' + (p.staff * CONFIG.STAFF_WAGE).toFixed(1) + ' per season.';
+}
+// Split so the BUILD step (spend levers + bets) and the PRICE step (the two prices) render into
+// their own containers, while keeping every element id the same so updateBudget/updateGhostAndMemos
+// (and the mountain preview) keep working unmodified. renderLevers() below calls both.
+function renderBuildLevers(){
+  const wrap = document.getElementById('levers');
+  const p = engineState.resorts[engineState.playerIdx];
+  wrap.innerHTML = `
+    <h2>Season ${engineState.s+1} Levers</h2>
+    <div class="lever">
+      <div class="t"><span>Add Runs</span><span class="cost" id="runsCost">$${spend.runs}</span></div>
+      <div class="l">Raises Terrain Challenge position. Sustained spend of $${CONFIG.RUNS_INFRA_THRESHOLD}+ holds the expert reach gate open toward 100% (currently ${(p._reachHi==null?75:p._reachHi*100).toFixed(0)}%); lapse it and the gate closes and can strand you.</div>
+      <div class="rowline"><input type="range" id="runsR" min="0" max="16" step="1" value="${spend.runs}"><span class="valtag" id="runsV">$${spend.runs}</span></div>
+    </div>
+    <div class="lever">
+      <div class="t"><span>Build Lodging</span><span class="cost" id="lodgeCost">$${spend.lodging}</span></div>
+      <div class="l">${p.lodgeBuilt ? 'Already built (permanent). Further spend still deepens Comfort position. A lodge needs more crew to run.' : `Capability GATE: comfort is capped at ${(CONFIG.LODGE_GATE_MAX*100).toFixed(0)}% until your first dollar of Lodging spend lands.`}</div>
+      <div class="rowline"><input type="range" id="lodgeR" min="0" max="16" step="1" value="${spend.lodging}"><span class="valtag" id="lodgeV">$${spend.lodging}</span></div>
+      ${p.lodgeBuilt ? '<div class="gatenote">Lodging: OPEN</div>' : ''}
+    </div>
+    <div class="lever">
+      <div class="t"><span>Summer Events</span><span class="cost" id="eventsCost">$${spend.events}</span></div>
+      <div class="l">Your drought hedge. Off-season revenue that pays out at x${CONFIG.EVENTS_DROUGHT_MULT.toFixed(2)} in a bad-snow season and only x${CONFIG.EVENTS_POWDER_MULT.toFixed(2)} in a powder one. Also pulls Terrain and Comfort toward the middle ground.</div>
+      <div class="rowline"><input type="range" id="eventsR" min="0" max="16" step="1" value="${spend.events}"><span class="valtag" id="eventsV">$${spend.events}</span></div>
+    </div>
+    <div class="lever">
+      <div class="t"><span>Marketing</span><span class="cost" id="mktCost">$${spend.marketing}</span></div>
+      <div class="l">No position shift. Widens your catchment across segments this season.</div>
+      <div class="rowline"><input type="range" id="mktR" min="0" max="16" step="1" value="${spend.marketing}"><span class="valtag" id="mktV">$${spend.marketing}</span></div>
+    </div>
+    <h2 style="margin-top:16px;">Operations (outside the budget)</h2>
+    <div class="lever">
+      <div class="t"><span>Capacity</span><span class="cost">${spend.opsCost}</span></div>
+      <div class="l">A running-cost dial, 7 to 13. Above 8 grows capacity (bigger sphere, more skiers you can serve) at a cost that rises faster than the dial; below 8 runs lean and shrinks it. Built capacity only serves skiers if you have the crew to run it.</div>
+      <div class="rowline"><input type="range" id="opsR" min="7" max="13" step="1" value="${spend.opsCost}"><span class="valtag" id="opsV">${spend.opsCost}</span></div>
+    </div>
+    <div class="lever">
+      <div class="t"><span>Hire crew</span><span class="cost">${spend.hire}</span></div>
+      <div class="l">${staffLine(p)} Hire 0, 1 or 2 crews (${CONFIG.STAFF_PER_HIRE} each). They start work NEXT season and stay on payroll every season after, needed or not.</div>
+      <div class="rowline"><input type="range" id="hireR" min="0" max="${CONFIG.HIRE_MAX}" step="1" value="${spend.hire}"><span class="valtag" id="hireV">${spend.hire}</span></div>
+    </div>
+    ${renderBetsHTML()}
+  `;
+  const bind = (id, cb) => document.getElementById(id).addEventListener('input', cb);
+  bind('runsR', e=>{ spend.runs=+e.target.value; document.getElementById('runsV').textContent='$'+spend.runs; document.getElementById('runsCost').textContent='$'+spend.runs; updateBudget(); updateGhostAndMemos(); });
+  bind('lodgeR', e=>{ spend.lodging=+e.target.value; document.getElementById('lodgeV').textContent='$'+spend.lodging; document.getElementById('lodgeCost').textContent='$'+spend.lodging; updateBudget(); updateGhostAndMemos(); });
+  bind('eventsR', e=>{ spend.events=+e.target.value; document.getElementById('eventsV').textContent='$'+spend.events; document.getElementById('eventsCost').textContent='$'+spend.events; updateBudget(); updateGhostAndMemos(); });
+  bind('mktR', e=>{ spend.marketing=+e.target.value; document.getElementById('mktV').textContent='$'+spend.marketing; document.getElementById('mktCost').textContent='$'+spend.marketing; updateBudget(); updateGhostAndMemos(); });
+  bind('opsR', e=>{ spend.opsCost=+e.target.value; document.getElementById('opsV').textContent=spend.opsCost; updateGhostAndMemos(); });
+  bind('hireR', e=>{ spend.hire=+e.target.value; document.getElementById('hireV').textContent=spend.hire; updateGhostAndMemos(); });
+  document.querySelectorAll('.betBuyBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const k = btn.dataset.bet;
+      if (p.bets[k]) return;
+      selectedBet = selectedBet === k ? null : k;
+      renderBuildLevers();
+      updateGhostAndMemos();
+    });
+  });
+  updateBudget();
+}
+function renderPriceLevers(){
+  const wrap = document.getElementById('priceLevers');
+  wrap.innerHTML = `
+    <h2>Price (continuous, two decisions)</h2>
+    <div class="lever">
+      <div class="t"><span>Day-Pass Price</span></div>
+      <div class="l">Weighted 65% into your price position; also sets your revenue per served skier directly.</div>
+      <div class="rowline"><input type="range" id="dayPriceR" min="0" max="100" step="1" value="${dayPassPrice*100}"><span class="valtag" id="dayPriceV">${Math.round(dayPassPrice*100)}</span></div>
+    </div>
+    <div class="lever">
+      <div class="t"><span>Lodging Rate</span></div>
+      <div class="l">Weighted 35% into the same price position.</div>
+      <div class="rowline"><input type="range" id="lodgePriceR" min="0" max="100" step="1" value="${lodgePrice*100}"><span class="valtag" id="lodgePriceV">${Math.round(lodgePrice*100)}</span></div>
+    </div>
+  `;
+  const bind = (id, cb) => document.getElementById(id).addEventListener('input', cb);
+  bind('dayPriceR', e=>{ dayPassPrice=(+e.target.value)/100; document.getElementById('dayPriceV').textContent=e.target.value; updateGhostAndMemos(); });
+  bind('lodgePriceR', e=>{ lodgePrice=(+e.target.value)/100; document.getElementById('lodgePriceV').textContent=e.target.value; updateGhostAndMemos(); });
+}
+function renderLevers(){
+  renderBuildLevers();
+  renderPriceLevers();
+  updateGhostAndMemos();
+}
+function renderStageRow(){
+  document.querySelectorAll('#stageRow button').forEach(b => {
+    b.classList.toggle('on', b.dataset.stage === stageGuess);
+    b.onclick = () => { stageGuess = b.dataset.stage; renderStageRow(); };
+  });
+}
+function updateBudget(){
+  const spent = spend.runs + spend.lodging + spend.events + spend.marketing;
+  document.getElementById('budgetSpent').textContent = '$'+spent;
+  document.getElementById('budgetTotal').textContent = '$'+BUDGET;
+  document.getElementById('budgetLine').classList.toggle('over', spent>BUDGET);
+  document.getElementById('lockBtn').disabled = spent>BUDGET || GAME.phase !== 'board';
+}
+function nearestSegName(target, segs){
+  let best=null, bestD=Infinity;
+  segs.forEach(s=>{ const d=dist3(target, s.need); if(d<bestD){bestD=d; best=s;} });
+  return best;
+}
+// preview-only projection through the engine's own pure resolver, so scrubbing sliders can
+// never advance gate or track-out state, and the memo cannot drift from what resolve will do.
+function updateGhostAndMemos(){
+  const p = engineState.resorts[engineState.playerIdx];
+  const s = Math.min(engineState.s, CONFIG.SEASONS - 1);
+  const { shares: segShares } = segMassShares(s, engineState.env);
+  const preview = { ...p, pos: [...p.pos] };
+  preview._spendRuns = spend.runs; preview._spendLodging = spend.lodging;
+  preview._spendEvents = spend.events; preview._spendMkt = spend.marketing;
+  preview.dayPassPrice = dayPassPrice; preview.lodgingRate = lodgePrice;
+  const mods = previewSpatialMods(preview);
+  const res = resolveAxes(preview, engineState.resorts, segShares, s, mods, engineState.resorts.map(x => x.pos));
+  pendingGhostTarget = res.target;
+  const segs = currentSegments();
+  const nearest = nearestSegName(res.target, segs);
+  const willUnlockLodge = !p.lodgeBuilt && spend.lodging > 0;
+  const spent = spend.runs + spend.lodging + spend.events + spend.marketing;
+  const rivalsNear = engineState.resorts.filter(f => f.i !== p.i && dist3(f.pos, res.target) < 0.35).map(f => nameOf(f));
+  const cards = document.getElementById('memoCards');
+  let gateLine = '';
+  if (willUnlockLodge) gateLine = '<div><b>Opens:</b> Lodging gate (comfort ceiling lifts fully, permanently).</div>';
+  const reachNote = mods.reachHi < 0.999 ? `Terrain reach ceiling this plan: ${(mods.reachHi*100).toFixed(0)}%.` : 'Terrain reach ceiling: fully open (100%).';
+  const capDelta = (spend.opsCost - 8) * CONFIG.CAP_GROWTH_MULT;
+  const newCap = p.cap + capDelta;
+  const req = newCap * CONFIG.STAFF_PER_CAP * ((p.lodgeBuilt || willUnlockLodge) ? CONFIG.LODGE_STAFF_MULT : 1);
+  const crewNow = p.staff + (p._pendingHire || 0) * CONFIG.STAFF_PER_HIRE;
+  const util = Math.min(1, crewNow / Math.max(1, req));
+  const capNote = (Math.abs(capDelta) < 0.01 ? 'Capacity holds flat this season.' : `Capacity ${capDelta > 0 ? 'grows' : 'shrinks'} by ${Math.abs(capDelta).toFixed(1)} units this season.`)
+    + ` With the crew you will have, you can run about ${(util*100).toFixed(0)}% of it${util < 0.98 ? ' (understaffed: unserved skiers and a reputation hit)' : ''}. Crew hired now (${spend.hire}) arrives next season.`;
+  cards.innerHTML = `
+    <h2>Season Projection</h2>
+    <div class="memo"><b>Aim:</b> this plan aims toward ${nearest ? nearest.name : 'open ground'}. Move fraction estimate: ${(res.fraction*100).toFixed(0)}% of the intended distance lands (demand mass ${(res.demandMass).toFixed(2)}, rival crowd weight ${(res.crowdWeight).toFixed(2)}). ${gateLine}</div>
+    <div class="memo"><b>Reach:</b> ${reachNote}</div>
+    <div class="memo"><b>Capacity and crew:</b> ${capNote}</div>
+    <div class="memo"><b>Contest:</b> ${rivalsNear.length ? rivalsNear.join(', ') + ' already sit near this target region' : 'no rival sits close to this target yet'}.</div>
+    <div class="memo"><b>Budget:</b> $${spent} of $${BUDGET} committed this season (Capacity and crew are separate).</div>
+  `;
+}
+function updateReport(){
+  const rl = document.getElementById('reportLine');
+  const p = engineState.resorts[engineState.playerIdx];
+  let mainHtml;
+  if (engineState.s===0){
+    mainHtml = `<b>Patrol Report:</b> Opening positions set. Every table starts from the same mountain. Vail and Alta are already where they have always been.`;
+  } else {
+    const last = engineState.log[engineState.log.length-1];
+    const gateLine = last && last.lines.find(l=>l.cls==='gate');
+    mainHtml = `<b>Patrol Report, season ${Math.min(engineState.s+1, CONFIG.SEASONS)}:</b> cash $${p.cash.toFixed(0)}, profit-to-date $${(p.profit||0).toFixed(0)}. ${gateLine ? gateLine.text : (last && last.lines[0] ? last.lines[0].text : '')}`;
+  }
+  const tickerHtml = (engineState.tickerLines || []).map(t => `<div style="margin-top:4px;font-size:12px;color:var(--dim);">${t}</div>`).join('');
+  rl.innerHTML = mainHtml + tickerHtml;
+  const readRl = document.getElementById('readReportLine');
+  if (readRl) readRl.innerHTML = rl.innerHTML;
+}
+function updateLogStrip(){
+  const box = document.getElementById('logStrip');
+  const recent = engineState.log.slice(-2);
+  let html = '';
+  recent.forEach(entry=>{ entry.lines.forEach(l=>{ html += `<div class="ln ${l.cls}">S${entry.season}: ${l.text}</div>`; }); });
+  box.innerHTML = html || '<div class="ln">No teaching events yet. Season 1 is yours to open.</div>';
+  const readLog = document.getElementById('readLogStrip');
+  if (readLog) readLog.innerHTML = box.innerHTML;
+}
+// Dossiers: the two named rivals carry their real strategic identity. Other tables are just
+// names and a colour; what they are up to is for you to read off the board.
+function renderDossiers(){
+  const box = document.getElementById('dossierList');
+  const rows = [];
+  RIVALS.forEach((rv, k) => {
+    const seat = TEAM_SEATS + k;
+    const rr = engineState.resorts.find(r => r.i === seat);
+    const betKey = rv.arch === 'NETWORK' ? 'megapass' : (rv.arch === 'FORTRESS' ? 'exclusivity' : null);
+    const owned = rr && rr.bets && betKey && rr.bets[betKey];
+    rows.push(`<div class="dossierRow"><span class="dchip" style="background:${SEAT_COLORS[seat]}"></span>
+      <div><b>${rv.name}</b><div class="dd">${rv.note}</div>${betKey ? `<div class="dd" style="color:var(--gold);">Structural bet: ${BETS[betKey].label}${owned ? ' (bought)' : ' (not yet bought)'}</div>` : ''}</div></div>`);
+  });
+  for (let i = 0; i < TEAM_SEATS; i++) {
+    if (i === MY_SEAT) continue;
+    const t = TEAM_BY_SEAT[i]; if (!t) continue;
+    rows.push(`<div class="dossierRow"><span class="dchip" style="background:${SEAT_COLORS[i]}"></span><div><b>${t.name}</b><div class="dd">${t.is_ai ? 'Unclaimed seat, run by the house.' : 'Another table in this room.'}</div></div></div>`);
+  }
+  box.innerHTML = rows.join('');
+}
+document.getElementById('dossierBtn').addEventListener('click', ()=>{
+  const box = document.getElementById('dossierBox');
+  box.style.display = box.style.display === 'block' ? 'none' : 'block';
+});
+
+// ==========================================================================
+// ---- Market / Mountain toggle over the board canvas ----
+// ==========================================================================
+let BOARD_VIEW = 'market';
+function setBoardView(v){
+  BOARD_VIEW = v;
+  document.getElementById('viewMarketBtn').classList.toggle('on', v === 'market');
+  document.getElementById('viewMountainBtn').classList.toggle('on', v === 'mountain');
+  document.getElementById('legendBox').style.display = v === 'mountain' ? 'none' : '';
+  document.getElementById('mtnLegendBox').style.display = v === 'mountain' ? '' : 'none';
+  const glCanvas = document.getElementById('mtnGL');
+  glCanvas.style.display = v === 'mountain' ? 'block' : 'none'; // '' would just fall back to the
+  // #mtnGL{display:none} stylesheet rule and never actually show the canvas
+  if (v === 'mountain' && !MountainGL.__inited) { MountainGL.init(glCanvas); MountainGL.__inited = true; }
+}
+document.getElementById('viewMarketBtn').addEventListener('click', ()=>setBoardView('market'));
+document.getElementById('viewMountainBtn').addEventListener('click', ()=>setBoardView('mountain'));
+let mtnCaptionTimer = null;
+function showMtnCaption(text){
+  const el = document.getElementById('mtnCaption');
+  el.textContent = text; el.style.display = '';
+  // #reportLine's height varies with its text; sit just below its actual rendered bottom edge
+  // (rather than a fixed offset) so the caption never overlaps it.
+  const rl = document.getElementById('reportLine');
+  el.style.top = (rl.offsetTop + rl.offsetHeight + 8) + 'px';
+  if (mtnCaptionTimer) clearTimeout(mtnCaptionTimer);
+  mtnCaptionTimer = setTimeout(()=>{ el.style.display = 'none'; }, 4000);
+}
+
+// ==========================================================================
+// ---- three-step decision flow: READ / BUILD / PRICE + LOCK ----
+// ==========================================================================
+let uiStep = 0;
+// opts.keepView: true right after a season resolve, so the mountain reveal (already switched on
+// by onNewSeason) is not immediately overridden back to Market just because READ defaults there.
+function showStep(i, opts){
+  opts = opts || {};
+  uiStep = i;
+  ['stepRead','stepBuild','stepPrice'].forEach((id,idx)=>{ document.getElementById(id).hidden = idx !== i; });
+  document.querySelectorAll('#stepDots .dot').forEach(d=>{ d.classList.toggle('on', +d.dataset.step === i); });
+  document.getElementById('stepBackBtn').disabled = i === 0;
+  document.getElementById('stepNextBtn').hidden = i === 2;
+  if (!opts.keepView) setBoardView(i === 1 ? 'mountain' : 'market');
+}
+document.getElementById('stepBackBtn').addEventListener('click', ()=>{ if (uiStep > 0) showStep(uiStep - 1); });
+document.getElementById('stepNextBtn').addEventListener('click', ()=>{ if (uiStep < 2) showStep(uiStep + 1); });
+document.querySelectorAll('#stepDots .dot').forEach(d=>{ d.addEventListener('click', ()=>showStep(+d.dataset.step)); });
+
+// ==========================================================================
+// ---- Mountain view: see prototypes/PORT-BRIEF-2.md. WebGL renderer (prototypes/
+// mountain-e-webgl.html, "Mountain E"), wrapped in the MountainGL closure below. Own camera/yaw
+// so it never disturbs the market camera. mtnPreviewState() builds the player's build-in-progress
+// display state (the engine resort plus pending sliders) in the exact shape the renderer expects.
+// ==========================================================================
+let mtnFreezeUntil = 0;
+// State for the mountain is either the player's resolved engine state, or, while a plan is being
+// built, that state plus the pending sliders (mission item 2: live preview of what BUILD is doing).
+// Guards p.built missing for older rows by treating it as zeros. Shape matches MountainGL's STATE
+// exactly: {seed, seat, season, snow, cap, staff, _util, _reachHi, lodgeBuilt, built:{...}, bets:{...}}.
+function mtnPreviewState(){
+  const p = engineState.resorts[engineState.playerIdx];
+  const built = p.built || { runs:0, lodging:0, events:0, marketing:0 };
+  const previewLodge = p.lodgeBuilt || spend.lodging > 0;
+  const previewCap = p.cap + (spend.opsCost - 8) * CONFIG.CAP_GROWTH_MULT;
+  const pendingHireCrew = (p._pendingHire || 0) * CONFIG.STAFF_PER_HIRE;
+  const staffNow = p.staff + pendingHireCrew; // arrives this season; a hire chosen now arrives next season
+  const req = previewCap * CONFIG.STAFF_PER_CAP * (previewLodge ? CONFIG.LODGE_STAFF_MULT : 1);
+  const util = Math.min(1, staffNow / Math.max(1, req));
+  const s = Math.max(0, engineState.s - 1); // GAME.world.snowTrace of the last RESOLVED season
+  const snow = (GAME.world.snowTrace || [])[s] || 'normal';
+  return {
+    seed: GAME.world.seed, seat: MY_SEAT, season: engineState.s, snow,
+    cap: previewCap, staff: staffNow, _util: util, _reachHi: p._reachHi == null ? 0.75 : p._reachHi,
+    lodgeBuilt: previewLodge,
+    built: { runs: (built.runs||0) + spend.runs, lodging: (built.lodging||0) + spend.lodging,
+      events: (built.events||0) + spend.events, marketing: (built.marketing||0) + spend.marketing },
+    pendingHire: (spend.hire || 0) * CONFIG.STAFF_PER_HIRE, // crew chosen THIS season: pale figures, they start next season
+    dayPrice: dayPassPrice,                               // shown on the ticket board by the lodge
+    bets: Object.assign({}, p.bets || {}, selectedBet ? { [selectedBet]: true } : {}),
+  };
+}
+// One formula set, used by both MountainGL's scene build and its self-test. MEASURED 2026-09-14
+// against a 200-seed engine simulation (see progress.log): the un-amplified MOUNTAIN-SPEC formulas
+// drew zero closed runs for an 84%- and 93%-staffed engaged table, which fails the mission item
+// "an understaffed season marks runs closed", so the closed-run count is amplified here to agree
+// with the engine narration's own 0.98 threshold.
+function mtnCounts(state){
+  const runs = Math.min(14, Math.ceil((state.built.runs||0)/4));
+  const towers = Math.min(14, Math.max(0, Math.floor((state.cap-100)/4)));
+  const crew = Math.min(24, Math.round((state.staff||0)/9));
+  const village = state.lodgeBuilt ? Math.min(10, Math.ceil((state.built.lodging||0)/4)) : 0;
+  const util = state._util != null ? state._util : 1;
+  const closed = util < 0.98 ? Math.min(runs, Math.max(1, Math.round(runs*(1-util)*2))) : 0;
+  const chutes = (state._reachHi||0) >= 0.999;
+  const billboards = Math.min(6, Math.ceil((state.built.marketing||0)/4)); // one billboard per $4 of cumulative marketing
+  const ghosts = Math.min(6, Math.round((state.pendingHire||0)/3));          // 3 pale figures per crew hired this season
+  return { runs, towers, crew, village, closed, chutes, billboards, ghosts };
+}
+
+// ==========================================================================
+// ---- MountainGL: the render block from prototypes/mountain-e-webgl.html ("Mountain E", RENDER
+// START..RENDER END), wrapped in this closure so it exposes only {init, setState, setYaw, getYaw,
+// render, selfTest}. The market pipeline above already owns top-level names like canvas, ctx, cam,
+// render, resize, clamp and mulberry32, and a collision already broke this page once (TEAM_SEATS,
+// 2026-09-11) -- everything below is scoped inside this IIFE so it can freely reuse the
+// prototype's own names (its own mulberry32, its own canvas/gl locals) without touching those.
+// The prototype's HUD/harness (STATE mutation via window.setResortState, its own drag handling,
+// its own rAF loop, the #fps DOM readout) is dropped; setState/setYaw/render below replace it.
+// Kept exactly as the prototype has them (critic-verified fixes): the persistent GPU buffers
+// (glUp/glFree, uploaded once per rebuild, not every frame) and the tweenActive rebuild gate
+// (44->60 fps fix and the frozen-tween fix).
+// ==========================================================================
+const MountainGL = (() => {
+  // ---------- math helpers ----------
+  function m4Id(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);}
+  function m4Mul(a,b){var o=new Float32Array(16);
+    for(var c=0;c<4;c++)for(var r=0;r<4;r++){var s=0;for(var k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}
+    return o;}
+  function m4Persp(fovy,asp,near,far){var f=1/Math.tan(fovy/2),nf=1/(near-far),o=new Float32Array(16);
+    o[0]=f/asp;o[5]=f;o[10]=(far+near)*nf;o[11]=-1;o[14]=2*far*near*nf;return o;}
+  function v3sub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+  function v3cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+  function v3dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+  function v3norm(a){var l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}
+  function m4LookAt(eye,ctr,up){var z=v3norm(v3sub(eye,ctr)),x=v3norm(v3cross(up,z)),y=v3cross(z,x),o=new Float32Array(16);
+    o[0]=x[0];o[1]=y[0];o[2]=z[0];o[3]=0;o[4]=x[1];o[5]=y[1];o[6]=z[1];o[7]=0;
+    o[8]=x[2];o[9]=y[2];o[10]=z[2];o[11]=0;
+    o[12]=-v3dot(x,eye);o[13]=-v3dot(y,eye);o[14]=-v3dot(z,eye);o[15]=1;return o;}
+  function projFrac(vp,p){var v4=[p[0],p[1],p[2],1];
+    var y=vp[1]*v4[0]+vp[5]*v4[1]+vp[9]*v4[2]+vp[13]*v4[3], w=vp[3]*v4[0]+vp[7]*v4[1]+vp[11]*v4[2]+vp[15]*v4[3];
+    return (1-y/w)/2;}
+
+  // ---------- seeded rng ----------
+  function mulberry32(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;var t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  function hashN(x,y,s){var v=Math.sin(x*127.1+y*311.7+s*74.3)*43758.5453;return v-Math.floor(v);}
+
+  // ---------- palette ----------
+  var PAL = {skyTop:[0x2b,0x3a,0x55],skyHor:[0x8f,0xa7,0xc4],snowLit:[0xf2,0xf5,0xf8],snowSh:[0xb9,0xc6,0xd6],
+    rock:[0x6b,0x64,0x59],forLit:[0x3f,0x6b,0x3f],forSh:[0x27,0x45,0x2b],meadow:[0x6e,0x8b,0x46],
+    runCor:[0xdf,0xe7,0xee],runOut:[0x2c,0x34,0x40],lodgeWood:[0x7a,0x52,0x33],lodgeRoof:[0x9c,0x3b,0x2e],
+    crew:[0xff,0x8f,0x1f],closedBar:[0xd9,0x34,0x2b],liftSteel:[0x8b,0x8f,0x96],cable:[0x2b,0x2b,0x2b]};
+  function c3(a){return [a[0]/255,a[1]/255,a[2]/255];}
+  function lerp3(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+
+  // ---------- GL setup: gl/programs/buffers are created lazily in init(), not at closure build time ----------
+  var glCanvas = null, gl = null, glOK = false;
+  var VS = 'attribute vec3 aPos;attribute vec3 aNrm;attribute vec3 aCol;'+
+    'uniform mat4 uMVP;uniform mat4 uModel;varying vec3 vN;varying vec3 vC;varying vec3 vW;'+
+    'void main(){vec4 w=uModel*vec4(aPos,1.0);vW=w.xyz;vN=mat3(uModel)*aNrm;vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=3.0;}';
+  var FS = 'precision mediump float;varying vec3 vN;varying vec3 vC;varying vec3 vW;'+
+    'uniform vec3 uSunDir;uniform vec3 uSunCol;uniform vec3 uSkyCol;uniform vec3 uGndCol;uniform vec3 uFogCol;uniform vec3 uEye;uniform vec2 uFog;'+
+    'void main(){vec3 n=normalize(vN);float diff=max(dot(n,uSunDir),0.0);'+
+    'float hemi=n.y*0.5+0.5;vec3 amb=mix(uGndCol,uSkyCol,hemi);'+
+    'vec3 lit=vC*(amb*0.55+uSunCol*diff*0.85);'+
+    'float d=length(uEye-vW);float fog=clamp((d-uFog.x)/uFog.y,0.0,0.85);'+
+    'gl_FragColor=vec4(mix(lit,uFogCol,fog),1.0);}';
+  var PVS='attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=2.5;}';
+  var PFS='precision mediump float;void main(){gl_FragColor=vec4(0.95,0.97,1.0,0.85);}';
+  var UVS='attribute vec3 aPos;attribute vec3 aCol;uniform mat4 uMVP;varying vec3 vC;void main(){vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=7.0;}';
+  var UFS='precision mediump float;varying vec3 vC;void main(){gl_FragColor=vec4(vC,1.0);}';
+  var SVS='attribute vec2 aPos;varying vec2 vP;void main(){vP=aPos;gl_Position=vec4(aPos,0.9999,1.0);}';
+  var SFS='precision mediump float;varying vec2 vP;uniform vec3 uTop;uniform vec3 uHor;uniform vec2 uSunScr;uniform vec3 uGlow;'+
+    'void main(){float t=(vP.y+1.0)*0.5;vec3 c=mix(uHor,uTop,t);float d=distance(vP,uSunScr);'+
+    'c+=uGlow*exp(-d*d*9.0)*0.6;gl_FragColor=vec4(c,1.0);}';
+  function compile(src,type){var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));return s;}
+  function link(vs,fs){var p=gl.createProgram();gl.attachShader(p,compile(vs,gl.VERTEX_SHADER));
+    gl.attachShader(p,compile(fs,gl.FRAGMENT_SHADER));gl.linkProgram(p);
+    if(!gl.getProgramParameter(p,gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));return p;}
+  var PROG, PPROG, UPROG, SPROG, skyBuf, MAX_ATTRS = 0;
+
+  // ---------- terrain heightfield (polar disc mesh: guarantees a circular footprint, no square skirt) ----------
+  var RINGS = 40, SECTORS = 64, R = 5.2, PEAK_H = R*0.9;
+  function heightAt(x,z,rng2,ridgeA){
+    // broad massif: a gentle radial dome carries most of the mass (not a thin cone), a wide ridge
+    // crest, a shoulder bump (>=0.25R wide) and a lower sub-peak give the skyline two bumps.
+    var r = Math.hypot(x,z)/R, ang = Math.atan2(z,x);
+    var dome = Math.pow(Math.max(0,1-r/0.92), 0.65);
+    var h = dome*PEAK_H*0.92;
+    var d = Math.atan2(Math.sin(ang-ridgeA),Math.cos(ang-ridgeA));
+    h += Math.exp(-(d*d)/(2*0.55*0.55))*dome*PEAK_H*0.12;
+    var shX = Math.cos(ridgeA)*0.55*R, shZ = Math.sin(ridgeA)*0.55*R, dsh = Math.hypot(x-shX,z-shZ)/R;
+    h = Math.max(h, Math.exp(-(dsh*dsh)/0.05)*PEAK_H*0.6);
+    var subA = ridgeA+1.35, sx = Math.cos(subA)*0.45*R, sz = Math.sin(subA)*0.45*R, dsub = Math.hypot(x-sx,z-sz)/R;
+    h = Math.max(h, Math.exp(-(dsub*dsub)/0.03)*PEAK_H*0.5);
+    var leeA = ridgeA+Math.PI, bx = Math.cos(leeA)*0.4*R, bz = Math.sin(leeA)*0.4*R, db = Math.hypot(x-bx,z-bz)/R;
+    h -= Math.exp(-(db*db)/0.05)*PEAK_H*0.15*dome;
+    h += (hashN(x*1.3,z*1.3,rng2)-0.5)*0.14*dome;
+    return Math.max(0,h);
+  }
+  function buildTerrain(seed,seat){
+    var rnd = mulberry32(seed*31+seat), ridgeA = rnd()*Math.PI*2, rng2 = rnd()*1000;
+    var pos=[],idx=[],meta=[], stride=SECTORS+1, summit=[0,0,0];
+    for(var ri=0; ri<=RINGS; ri++){
+      var rf = ri/RINGS;
+      for(var si=0; si<=SECTORS; si++){
+        var theta = si/SECTORS*Math.PI*2;
+        var x = rf*R*Math.cos(theta), z = rf*R*Math.sin(theta);
+        var h = heightAt(x,z,rng2,ridgeA);
+        pos.push(x,h,z);
+        meta.push({r:rf, ang:theta, h:h});
+        if(h>summit[1]) summit=[x,h,z];
+      }
+    }
+    for(var ri2=0; ri2<RINGS; ri2++)for(var si2=0; si2<SECTORS; si2++){
+      var a=ri2*stride+si2,b=a+1,c=a+stride,d=c+1;
+      idx.push(a,b,c, b,d,c);
+    }
+    var nrm = new Float32Array(pos.length);
+    for(var t=0;t<idx.length;t+=3){
+      var i0=idx[t]*3,i1=idx[t+1]*3,i2=idx[t+2]*3;
+      var p0=[pos[i0],pos[i0+1],pos[i0+2]],p1=[pos[i1],pos[i1+1],pos[i1+2]],p2=[pos[i2],pos[i2+1],pos[i2+2]];
+      var fn = v3cross(v3sub(p1,p0),v3sub(p2,p0));
+      for(var k=0;k<3;k++){ var ii=idx[t+k]*3; nrm[ii]+=fn[0]; nrm[ii+1]+=fn[1]; nrm[ii+2]+=fn[2]; }
+    }
+    for(var v=0;v<nrm.length;v+=3){ var n=v3norm([nrm[v],nrm[v+1],nrm[v+2]]); nrm[v]=n[0];nrm[v+1]=n[1];nrm[v+2]=n[2]; }
+    return {pos:new Float32Array(pos), nrm:nrm, idx:new Uint16Array(idx), meta:meta, ridgeA:ridgeA, rng2:rng2, summit:summit};
+  }
+
+  // runs: 14 slots all on the camera-facing half (within +/-1.1 rad of yaw 0)
+  function runSlots(seed,seat){
+    var rnd = mulberry32(seed*7+seat*13+99), slots=[];
+    for(var i=0;i<14;i++){
+      var a = -1.1 + (i/13)*2.2 + (rnd()-0.5)*0.06; // evenly spaced, all camera-facing, small seeded jitter
+      var topR = 0.15 + rnd()*0.25; // staggered start so runs don't all converge at the summit
+      var bend = (rnd()-0.5)*0.1; // one gentle mid-corridor lateral bend, on top of the S-curve
+      slots.push({ang:a, diff: i%3, topR:topR, bend:bend});
+    }
+    return slots;
+  }
+  function terrainColor(state,tg,slots){
+    // colour by slope (rock only where steep) crossed with a single snow-line elevation band
+    var wOff = state.snow==='powder'?-0.13:(state.snow==='drought'?0.13:0);
+    var snowLine = 0.62+wOff;
+    var snowCol = c3(PAL.snowLit); if(state.snow==='powder'){ snowCol=[Math.min(1,snowCol[0]*1.1),Math.min(1,snowCol[1]*1.1),Math.min(1,snowCol[2]*1.1)]; }
+    var forCol = c3(PAL.forLit), meadowCol = lerp3(forCol,c3(PAL.meadow),0.4), rockCol = c3(PAL.rock);
+    var fogRimCol = state.snow==='drought' ? [0.788,0.659,0.463] : c3(PAL.skyHor);
+    var sunA = -0.7, sunDir2=[Math.cos(sunA),Math.sin(sunA)];
+    var col = new Float32Array(tg.meta.length*3);
+    for(var v=0; v<tg.meta.length; v++){
+      var m = tg.meta[v], base;
+      var elevFrac = Math.min(1, m.h/PEAK_H);
+      var normY = tg.nrm[v*3+1];
+      var veg = elevFrac>snowLine ? snowCol : (state.snow==='drought'?meadowCol:forCol);
+      // rock-by-slope only applies above the treeline; the forested apron stays flat green regardless
+      // of local slope (a fractional falloff power makes the outer flank locally steep, which was
+      // painting the whole lower third tan before this elevation gate)
+      var rockT = elevFrac>0.35 ? Math.max(0,Math.min(1,(0.68-normY)/0.13)) : 0;
+      base = lerp3(veg,rockCol,rockT);
+      // dissolve the outer rim into the sky/fog colour instead of a flat dark tone, so the edge
+      // doesn't read as a hard ring (a "coin on a table")
+      if(m.r>0.9) base = lerp3(base,fogRimCol,Math.pow(Math.min(1,(m.r-0.9)/0.1),1.3));
+      // runs and chutes are drawn as their own ribbon meshes now (see buildStaticProps), not vertex-painted here
+      // cheap cast shadow: darken the side away from the sun, strengthened so the lee side is visible
+      var horiz = v3norm([Math.cos(m.ang)*m.r, 0, Math.sin(m.ang)*m.r]);
+      var shadowDot = Math.max(0, -(horiz[0]*sunDir2[0]+horiz[2]*sunDir2[1]));
+      var shadow = Math.pow(shadowDot,0.7)*0.55;
+      base = [base[0]*(1-shadow), base[1]*(1-shadow), base[2]*(1-shadow)];
+      col[v*3]=base[0]; col[v*3+1]=base[1]; col[v*3+2]=base[2];
+    }
+    return col;
+  }
+
+  // ---------- prop mesh generators (bake to world space, batched per class) ----------
+  function pushCone(arr,cx,cy,cz,r,h,segs,colr){
+    for(var i=0;i<segs;i++){
+      var a0=i/segs*Math.PI*2, a1=(i+1)/segs*Math.PI*2;
+      var x0=cx+Math.cos(a0)*r, z0=cz+Math.sin(a0)*r, x1=cx+Math.cos(a1)*r, z1=cz+Math.sin(a1)*r;
+      var apex=[cx,cy+h,cz], nb=v3norm(v3cross(v3sub([x1,cy,z1],[x0,cy,z0]),v3sub(apex,[x0,cy,z0])));
+      arr.p.push(x0,cy,z0, x1,cy,z1, apex[0],apex[1],apex[2]);
+      for(var k=0;k<3;k++){ arr.n.push(nb[0],nb[1],nb[2]); arr.c.push(colr[0],colr[1],colr[2]); }
+    }
+  }
+  function pushBox(arr,cx,cy,cz,sx,sy,sz,colr){
+    var fx=[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+    var faces=[[0,1,2,2,3,0],[5,4,7,7,6,5],[4,0,3,3,7,4],[1,5,6,6,2,1],[3,2,6,6,7,3],[4,5,1,1,0,4]];
+    var nrms=[[0,0,-1],[0,0,1],[-1,0,0],[1,0,0],[0,1,0],[0,-1,0]];
+    for(var f=0;f<6;f++){ var idx=faces[f], nn=nrms[f];
+      for(var k=0;k<6;k++){ var v=fx[idx[k]];
+        arr.p.push(cx+v[0]*sx, cy+v[1]*sy, cz+v[2]*sz);
+        arr.n.push(nn[0],nn[1],nn[2]); arr.c.push(colr[0],colr[1],colr[2]);
+      }
+    }
+  }
+  function pushPrism(arr,cx,cy,cz,sx,sy,sz,colr){ // gabled roof
+    var v=[[-sx,0,-sz],[sx,0,-sz],[sx,0,sz],[-sx,0,sz],[0,sy,-sz],[0,sy,sz]];
+    function tri(a,b,c){ var p0=v[a],p1=v[b],p2=v[c],nb=v3norm(v3cross(v3sub(p1,p0),v3sub(p2,p0)));
+      [p0,p1,p2].forEach(function(p){arr.p.push(cx+p[0],cy+p[1],cz+p[2]);arr.n.push(nb[0],nb[1],nb[2]);arr.c.push(colr[0],colr[1],colr[2]);}); }
+    tri(0,3,5); tri(0,5,4); tri(1,4,5); tri(1,5,2); tri(0,4,1); tri(3,2,5); // two roof slopes + two gable ends
+  }
+  function pushCyl(arr,cx,cy,cz,r,h,segs,colr){
+    for(var i=0;i<segs;i++){
+      var a0=i/segs*Math.PI*2, a1=(i+1)/segs*Math.PI*2;
+      var x0=cx+Math.cos(a0)*r, z0=cz+Math.sin(a0)*r, x1=cx+Math.cos(a1)*r, z1=cz+Math.sin(a1)*r;
+      var nb=v3norm([Math.cos((a0+a1)/2),0,Math.sin((a0+a1)/2)]);
+      var quad=[[x0,cy,z0],[x1,cy,z1],[x1,cy+h,z1],[x1,cy+h,z1],[x0,cy+h,z0],[x0,cy,z0]];
+      quad.forEach(function(p){arr.p.push(p[0],p[1],p[2]);arr.n.push(nb[0],nb[1],nb[2]);arr.c.push(colr[0],colr[1],colr[2]);});
+    }
+  }
+  function pushRibbon(arr,p0,p1,w,colr){ // thin horizontal-width strip between two points; used for cable and barrier geometry
+    var dx=p1[0]-p0[0], dz=p1[2]-p0[2], len=Math.hypot(dx,dz)||1;
+    var px=-dz/len*w/2, pz=dx/len*w/2;
+    var a=[p0[0]-px,p0[1],p0[2]-pz], b=[p0[0]+px,p0[1],p0[2]+pz], c=[p1[0]-px,p1[1],p1[2]-pz], d=[p1[0]+px,p1[1],p1[2]+pz];
+    [a,c,b,b,c,d].forEach(function(p){arr.p.push(p[0],p[1],p[2]);arr.n.push(0,1,0);arr.c.push(colr[0],colr[1],colr[2]);});
+  }
+  function terrainNormalAt(x,z,rng2,ridgeA){
+    var e=0.06;
+    var hL=heightAt(x-e,z,rng2,ridgeA), hR=heightAt(x+e,z,rng2,ridgeA);
+    var hD=heightAt(x,z-e,rng2,ridgeA), hU=heightAt(x,z+e,rng2,ridgeA);
+    return v3norm([-(hR-hL)/(2*e), 1, -(hU-hD)/(2*e)]);
+  }
+  function pushStrip(arr,a,b,offLo,offHi,colr){ // a,b:{x,y,z,n}; a banded quad between two centreline points, offset offLo..offHi perpendicular
+    var dx=b.x-a.x, dz=b.z-a.z, len=Math.hypot(dx,dz)||1, px=-dz/len, pz=dx/len;
+    var a0=[a.x+px*offLo,a.y,a.z+pz*offLo], a1=[a.x+px*offHi,a.y,a.z+pz*offHi];
+    var b0=[b.x+px*offLo,b.y,b.z+pz*offLo], b1=[b.x+px*offHi,b.y,b.z+pz*offHi];
+    [[a0,a.n],[b0,b.n],[a1,a.n],[a1,a.n],[b0,b.n],[b1,b.n]].forEach(function(pn){
+      arr.p.push(pn[0][0],pn[0][1],pn[0][2]); arr.n.push(pn[1][0],pn[1][1],pn[1][2]); arr.c.push(colr[0],colr[1],colr[2]); });
+  }
+  function pushPlate(arr,cx,cy,cz,ang,w,h,colr){ // small upright sign, facing outward along (cos ang,0,sin ang)
+    var tx=-Math.sin(ang), tz=Math.cos(ang), nx=Math.cos(ang), nz=Math.sin(ang);
+    var p0=[cx-tx*w/2,cy-h/2,cz-tz*w/2], p1=[cx+tx*w/2,cy-h/2,cz+tz*w/2];
+    var p2=[cx+tx*w/2,cy+h/2,cz+tz*w/2], p3=[cx-tx*w/2,cy+h/2,cz-tz*w/2];
+    [p0,p1,p2, p2,p3,p0].forEach(function(p){arr.p.push(p[0],p[1],p[2]);arr.n.push(nx,0,nz);arr.c.push(colr[0],colr[1],colr[2]);});
+  }
+  function pushPanel(arr,cx,cy,cz,ang,w,h,tilt,colr){ // panel facing outward, leaned back by tilt radians (solar array)
+    var tx=-Math.sin(ang), tz=Math.cos(ang), nx=Math.cos(ang), nz=Math.sin(ang), ct=Math.cos(tilt), st=Math.sin(tilt);
+    var vx=-nx*st, vy=ct, vz=-nz*st, nrm=[nx*ct, st, nz*ct];
+    var p0=[cx-tx*w/2-vx*h/2, cy-vy*h/2, cz-tz*w/2-vz*h/2], p1=[cx+tx*w/2-vx*h/2, cy-vy*h/2, cz+tz*w/2-vz*h/2];
+    var p2=[cx+tx*w/2+vx*h/2, cy+vy*h/2, cz+tz*w/2+vz*h/2], p3=[cx-tx*w/2+vx*h/2, cy+vy*h/2, cz-tz*w/2+vz*h/2];
+    [p0,p1,p2, p2,p3,p0].forEach(function(p){arr.p.push(p[0],p[1],p[2]);arr.n.push(nrm[0],nrm[1],nrm[2]);arr.c.push(colr[0],colr[1],colr[2]);});
+  }
+  function pushOcta(arr,cx,cy,cz,r,colr){ // round head: an 8-triangle octahedron with real per-face normals
+    var top=[cx,cy+r,cz], bot=[cx,cy-r,cz], ring=[[cx+r,cy,cz],[cx,cy,cz+r],[cx-r,cy,cz],[cx,cy,cz-r]];
+    function tri(a,b,c){ var nb=v3norm(v3cross(v3sub(b,a),v3sub(c,a)));
+      [a,b,c].forEach(function(p){arr.p.push(p[0],p[1],p[2]);arr.n.push(nb[0],nb[1],nb[2]);arr.c.push(colr[0],colr[1],colr[2]);}); }
+    for(var i=0;i<4;i++){ var p0=ring[i], p1=ring[(i+1)%4]; tri(top,p0,p1); tri(bot,p1,p0); }
+  }
+  function pushQuadX(arr,cx,cy,cz,w,h,colr){ // small unlit quad facing +x, for window lights (no normal needed)
+    var p=[[cx,cy-h/2,cz-w/2],[cx,cy-h/2,cz+w/2],[cx,cy+h/2,cz+w/2],[cx,cy+h/2,cz-w/2]];
+    [p[0],p[1],p[2], p[2],p[3],p[0]].forEach(function(pt){arr.p.push(pt[0],pt[1],pt[2]);arr.c.push(colr[0],colr[1],colr[2]);});
+  }
+  function newArr(){ return {p:[],n:[],c:[]}; }
+  function toBuf(arr){ return {pos:new Float32Array(arr.p), nrm:new Float32Array(arr.n), col:new Float32Array(arr.c), count:arr.p.length/3}; }
+
+  // static tree field, built once per (seed,seat) -- reserves all 14 run slots regardless of built.runs
+  function buildTrees(seed,seat,tg,slots){
+    var rnd = mulberry32(seed*53+seat*3+7);
+    var small=newArr(), med=newArr(), big=newArr();
+    var attempts=900, placed=0;
+    while(attempts-- > 0 && placed < 380){
+      var r = 0.12+rnd()*0.86, ang = rnd()*Math.PI*2;
+      var x=Math.cos(ang)*r*R, z=Math.sin(ang)*r*R, h=heightAt(x,z,tg.rng2,tg.ridgeA);
+      var elevFrac = h/PEAK_H;
+      if(elevFrac > 0.6) continue;
+      var inRun=false;
+      for(var s=0;s<slots.length;s++){
+        var angC = slots[s].ang + 0.08*Math.sin(r*Math.PI*1.5);
+        var dd=Math.atan2(Math.sin(ang-angC),Math.cos(ang-angC));
+        if(Math.abs(dd)*Math.max(r,0.04)*R<0.1 && r>0.04 && r<0.95){ inRun=true; break; } }
+      if(inRun || (r<0.22)) continue;
+      var colr = c3(PAL.forLit);
+      var sizeR = rnd();
+      var arr = sizeR<0.5?small:(sizeR<0.85?med:big);
+      var scale = (sizeR<0.5?0.12:(sizeR<0.85?0.18:0.26)) * (0.7+rnd()*0.7); // wider size variance, less planted
+      var jx=x+(rnd()-0.5)*0.14, jz=z+(rnd()-0.5)*0.14, jh=heightAt(jx,jz,tg.rng2,tg.ridgeA);
+      pushCone(arr,jx,jh,jz,scale*0.55,scale*1.8,6,colr);
+      placed++;
+    }
+    return {small:toBuf(small), med:toBuf(med), big:toBuf(big)};
+  }
+
+  // ---------- dynamic prop batches ----------
+  var spawnTimes = {};
+  function stamp(key,n){ if(!spawnTimes[key]) spawnTimes[key]=[]; while(spawnTimes[key].length<n) spawnTimes[key].push(performance.now()); return spawnTimes[key]; }
+  var tweenActive=false;
+  function popScale(t0,now){ var dt=(now-t0)/600; if(dt<1) tweenActive=true; return Math.min(1, Math.max(0, 1-Math.pow(1-Math.min(1,dt),3))); }
+
+  function buildLiftLine(towers,cable,tg,baseAng,baseRr,topAng,topRr,count,key,towerH,now){
+    var bx=Math.cos(baseAng)*baseRr*R, bz=Math.sin(baseAng)*baseRr*R;
+    var tx=Math.cos(topAng)*topRr*R, tz=Math.sin(topAng)*topRr*R;
+    var tt=stamp(key,count), prevTop=null;
+    for(var i=0;i<count;i++){
+      var t=count>1?i/(count-1):0;
+      var x=bx+(tx-bx)*t, z=bz+(tz-bz)*t, h=heightAt(x,z,tg.rng2,tg.ridgeA);
+      var sc=popScale(tt[i],now);
+      pushCyl(towers,x,h,z,0.022,towerH*sc,6,c3(PAL.liftSteel));
+      pushBox(towers,x,h+towerH*sc,z,0.12,0.024,0.024,c3(PAL.liftSteel));
+      var top=[x,h+towerH*sc,z];
+      if(prevTop) pushRibbon(cable,prevTop,top,0.012,c3(PAL.cable));
+      prevTop=top;
+    }
+  }
+  function buildLiftChairs(chairs,tg,baseAng,baseRr,topAng,topRr,count,towerH,nChairs,now){
+    if(count<=0) return;
+    var bx=Math.cos(baseAng)*baseRr*R, bz=Math.sin(baseAng)*baseRr*R;
+    var tx=Math.cos(topAng)*topRr*R, tz=Math.sin(topAng)*topRr*R;
+    var cyb=heightAt(bx,bz,tg.rng2,tg.ridgeA)+towerH, cyt=heightAt(tx,tz,tg.rng2,tg.ridgeA)+towerH;
+    for(var ci=0;ci<nChairs;ci++){
+      var p=(now*0.00006+ci/nChairs)%1;
+      var xc=bx+(tx-bx)*p, zc=bz+(tz-bz)*p, yc=cyb+(cyt-cyb)*p-0.06;
+      pushBox(chairs,xc,yc,zc,0.04,0.04,0.04,c3(PAL.crew));
+    }
+  }
+  function buildRibbonPath(arr,tg,ang0,curveAmp,bendAmp,topR,botR,width,fillCol,edgeCol,sc){
+    var steps=24, pts=[];
+    for(var k=0;k<=steps;k++){
+      var t=k/steps, r=topR+t*(botR-topR);
+      var ang=ang0+curveAmp*Math.sin(r*Math.PI*1.5)+bendAmp*Math.sin(t*Math.PI);
+      var x=Math.cos(ang)*r*R, z=Math.sin(ang)*r*R;
+      pts.push({x:x, y:heightAt(x,z,tg.rng2,tg.ridgeA)+0.03, z:z, n:terrainNormalAt(x,z,tg.rng2,tg.ridgeA)});
+    }
+    var half=(width/2)*sc, edge=0.02*sc;
+    for(var k=0;k<steps;k++){
+      var a=pts[k], b=pts[k+1];
+      pushStrip(arr,a,b,-half,-half+edge,edgeCol);
+      pushStrip(arr,a,b,-half+edge,half-edge,fillCol);
+      pushStrip(arr,a,b,half-edge,half,edgeCol);
+    }
+  }
+  function buildChairsBatch(state,tg,now){
+    var chairs=newArr(), towerH=0.66*0.8, nTowers=Math.max(0,Math.round((state.cap-100)/10));
+    var lift1N=Math.min(nTowers,7), lift2N=Math.max(0,Math.min(7,nTowers-7));
+    buildLiftChairs(chairs,tg, 0.25,0.74, 0.6,0.35, lift1N, towerH, 2, now);
+    buildLiftChairs(chairs,tg, -0.25,0.74, -0.6,0.35, lift2N, towerH, 2, now);
+    return {chairs:toBuf(chairs)};
+  }
+  // mtnCounts(state), defined once at the top level of this <script> (used by the market pipeline's
+  // self-test too), replaces the prototype's own deriveCounts -- one formula set, not two copies.
+  function buildStaticProps(state,tg,slots,now){
+    var dc = mtnCounts(state);
+    // active run slots: camera-facing first (nearest angle 0.3), same principle as closed-run
+    // selection, so a low run count still sits front and centre instead of at the far edge
+    var activeIdx=[]; for(var vo=0;vo<14;vo++) activeIdx.push(vo);
+    activeIdx.sort(function(a,b){ return Math.abs(slots[a].ang-0.3)-Math.abs(slots[b].ang-0.3); }); activeIdx = activeIdx.slice(0,dc.runs);
+    var towers=newArr(), lodge=newArr(), village=newArr(), crew=newArr(), guns=newArr(), flags=newArr(), gate=newArr(), stage=newArr();
+    var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr();
+    var LODGE_H = 0.66, towerH = LODGE_H*0.8, baseR = 0.74;
+    var lodgeX = R*0.80, lodgeZ = 0; // reference point for banner/gate/stage even if the lodge box itself isn't built yet
+    // lift 1 runs up one flank from the lodge apron; a second lift starts on the OTHER flank once
+    // the count would exceed 7 towers on a single line (a picket fence)
+    var nTowers = dc.towers;
+    var lift1N = Math.min(nTowers,7), lift2N = Math.max(0,Math.min(7,nTowers-7));
+    buildLiftLine(towers,cable,tg, 0.25,0.74, 0.6,0.35, lift1N, 'tw1', towerH, now);
+    buildLiftLine(towers,cable,tg, -0.25,0.74, -0.6,0.35, lift2N, 'tw2', towerH, now);
+    if(state.lodgeBuilt){
+      var lx=lodgeX, lz=lodgeZ, lh=heightAt(lx,lz,tg.rng2,tg.ridgeA);
+      var lt = stamp('lodge',1), sc=popScale(lt[0],now);
+      pushBox(lodge,lx,lh,lz,0.4*sc,0.22*sc,0.3*sc,c3(PAL.lodgeWood));
+      pushPrism(lodge,lx,lh+0.22*sc,lz,0.42*sc,0.22*sc,0.32*sc,c3(PAL.lodgeRoof));
+      pushCyl(lodge,lx-0.15*sc,lh+0.22*sc,lz,0.03,0.22*sc,6,c3(PAL.lodgeWood));
+      for(var wi=0;wi<4;wi++) pushQuadX(windows,lx+0.401*sc,lh+0.14*sc,lz-0.2*sc+wi*0.13*sc,0.05*sc,0.05*sc,[1,0.81,0.48]);
+      var nV = dc.village;
+      var vt = stamp('vil',nV);
+      for(var i2=0;i2<nV;i2++){
+        var side = i2%2===0?1:-1;
+        var vAng = Math.max(-0.35,Math.min(0.35, side*(0.08+Math.floor(i2/2)*0.09)));
+        var vR = (0.72 + (Math.floor(i2/2)%3)*0.08);
+        var vx = Math.cos(vAng)*vR*R, vz = Math.sin(vAng)*vR*R;
+        var vh = heightAt(vx,vz,tg.rng2,tg.ridgeA); var vs=popScale(vt[i2],now);
+        pushBox(village,vx,vh,vz,0.12*vs,0.1*vs,0.12*vs,c3(PAL.lodgeWood));
+        pushPrism(village,vx,vh+0.1*vs,vz,0.13*vs,0.09*vs,0.13*vs,c3(PAL.lodgeRoof));
+        pushQuadX(windows,vx+0.121*vs,vh+0.06*vs,vz,0.03*vs,0.03*vs,[1,0.81,0.48]);
+      }
+    }
+    var nFigures = dc.crew;
+    var crewH = LODGE_H*0.35, bodyH = crewH*0.7, headR = crewH*0.15, crewR=0.0825;
+    var clusters = [];
+    if(nTowers>0) clusters.push({ang:0.25, r:baseR});
+    if(state.lodgeBuilt) clusters.push({ang:0.1, r:0.78});
+    if(dc.runs>0) clusters.push({ang:slots[activeIdx[0]].ang, r:0.12});
+    if(dc.runs>1) clusters.push({ang:slots[activeIdx[1]].ang, r:0.12});
+    if(clusters.length===0) clusters.push({ang:0.6, r:0.3});
+    var ct = stamp('crew', nFigures);
+    for(var gi=0; gi<nFigures; gi++){
+      var cl = clusters[Math.floor(gi/3) % clusters.length], within = gi%3;
+      var tanX=-Math.sin(cl.ang), tanZ=Math.cos(cl.ang);
+      var cxB=Math.cos(cl.ang)*cl.r*R, czB=Math.sin(cl.ang)*cl.r*R;
+      var cx=cxB+tanX*(within-1)*0.12, cz=czB+tanZ*(within-1)*0.12, ch=heightAt(cx,cz,tg.rng2,tg.ridgeA);
+      var scc = popScale(ct[gi],now);
+      pushCyl(crew,cx,ch,cz,crewR,bodyH*scc,5,c3(PAL.crew));
+      pushOcta(crew,cx,ch+bodyH*scc+headR*scc,cz,headR*scc,[0.55,0.28,0.06]);
+    }
+    var nRuns2 = dc.runs, nClosed = dc.closed;
+    // closed runs: first nClosed of the already camera-ordered activeIdx list (nearest angle 0.3)
+    var closedSet={}; for(var ck=0;ck<nClosed;ck++) closedSet[activeIdx[ck]]=true;
+    var mt = stamp('mk',14), rt = stamp('rb',14), runFill=c3(PAL.runCor), closedFill=[0.604,0.639,0.678], runEdge=c3(PAL.runOut);
+    var minSignR = (dc.chutes||nTowers>0) ? 0.52 : 0; // keep run-top signs >=0.12*R clear of the chute/tower cluster near the summit
+    for(var ii=0; ii<nRuns2; ii++){
+      var mi=activeIdx[ii], slotM=slots[mi], signR = Math.max(slotM.topR, minSignR);
+      var mx=Math.cos(slotM.ang)*signR*R, mz=Math.sin(slotM.ang)*signR*R;
+      var mBase=heightAt(mx,mz,tg.rng2,tg.ridgeA), rsc=popScale(rt[mi],now);
+      buildRibbonPath(ribbons,tg,slotM.ang,0.08,slotM.bend,slotM.topR,0.9,0.18, closedSet[mi]?closedFill:runFill, runEdge, rsc);
+      var mscale=popScale(mt[mi],now)*0.14, postH=0.15;
+      pushCyl(markers,mx,mBase,mz,0.012,postH,5,c3(PAL.liftSteel));
+      var signCol = slotM.diff===0?[0.29,0.55,0.23]:(slotM.diff===1?[0.18,0.37,0.66]:[0.1,0.1,0.1]);
+      pushPlate(markers,mx,mBase+postH+mscale*0.5,mz,slotM.ang,mscale,mscale,signCol);
+    }
+    if(dc.chutes){ // chutes: real ribbon gullies, on the camera-facing side, same builder as runs
+      var chuteCol=[0.06,0.06,0.07];
+      for(var cu=0;cu<3;cu++) buildRibbonPath(ribbons,tg, 0.3+(cu-1)*0.16, 0,0, 0.03,0.4, 0.12, chuteCol,chuteCol, 1);
+    }
+    var bt = stamp('bar',nClosed);
+    for(var bk=0;bk<nClosed;bk++){
+      var bi=activeIdx[bk], angB=slots[bi].ang, rB=0.81, bsc=popScale(bt[bk],now);
+      var cxB=Math.cos(angB)*rB*R, czB=Math.sin(angB)*rB*R, hB=heightAt(cxB,czB,tg.rng2,tg.ridgeA);
+      pushBox(barriers,cxB,hB+0.03*bsc,czB,0.13*bsc,0.03*bsc,0.13*bsc,c3(PAL.closedBar)); // bright, solid bar: reads at distance
+    }
+    if(state.bets.snowmaking){
+      var gt = stamp('gun',3);
+      for(var i3=0;i3<3;i3++){
+        var a3=slots[0].ang+i3*0.06, r3b=0.5+i3*0.1;
+        var gx=Math.cos(a3)*r3b*R, gz=Math.sin(a3)*r3b*R, gh=heightAt(gx,gz,tg.rng2,tg.ridgeA), gs=popScale(gt[i3],now);
+        pushCyl(guns,gx,gh,gz,0.02,0.12*gs,5,c3(PAL.liftSteel));
+      }
+    }
+    if(state.bets.megapass){
+      // a vertical pole with a small striped flag, beside the lodge base
+      var ft = stamp('flag',1), fs=popScale(ft[0],now);
+      var bx=lodgeX-0.15, bz=lodgeZ+0.4, bh=heightAt(bx,bz,tg.rng2,tg.ridgeA);
+      pushCyl(flags,bx,bh,bz,0.012,0.22*fs,5,c3(PAL.liftSteel));
+      pushBox(flags,bx+0.05*fs,bh+0.19*fs,bz,0.05*fs,0.03*fs,0.006,c3(PAL.crew));
+      pushBox(flags,bx+0.05*fs,bh+0.13*fs,bz,0.05*fs,0.03*fs,0.006,[1,1,1]);
+    }
+    if(state.bets.exclusivity || state.bets.valuesBrand){
+      var gg = stamp('gate',1), gs2=popScale(gg[0],now);
+      pushBox(gate,0.3*R,0.12*gs2,0.02*R,0.02,0.12*gs2,0.15*gs2,c3(PAL.lodgeWood));
+    }
+    if(state.built.events>0){
+      // a low platform in front of the lodge
+      var st = stamp('stage',1), ss=popScale(st[0],now);
+      var sx=lodgeX+0.06, sz=lodgeZ-0.45, sh=heightAt(sx,sz,tg.rng2,tg.ridgeA);
+      pushBox(stage,sx,sh+0.015*ss,sz,0.15*ss,0.015*ss,0.1*ss,c3(PAL.lodgeWood));
+    }
+    // ---- choices that previously left no mark on the mountain (added 2026-09-15) ----
+    // Marketing: billboards along the right-hand rim road, one per $4 of cumulative spend (max 6)
+    var bbt = stamp('bb', dc.billboards);
+    for(var bb=0; bb<dc.billboards; bb++){
+      var bA=0.55+bb*0.17, bR=0.955*R, bX=Math.cos(bA)*bR, bZ=Math.sin(bA)*bR, bH=heightAt(bX,bZ,tg.rng2,tg.ridgeA), bs=popScale(bbt[bb],now);
+      var btx=-Math.sin(bA), btz=Math.cos(bA);
+      pushCyl(gate,bX-btx*0.09,bH,bZ-btz*0.09,0.012,0.2*bs,5,c3(PAL.liftSteel));
+      pushCyl(gate,bX+btx*0.09,bH,bZ+btz*0.09,0.012,0.2*bs,5,c3(PAL.liftSteel));
+      pushPlate(gate,bX,bH+0.26*bs,bZ,bA,0.3*bs,0.14*bs,[1,1,1]);
+      pushPlate(gate,bX+Math.cos(bA)*0.004,bH+0.26*bs,bZ+Math.sin(bA)*0.004,bA,0.26*bs,0.1*bs, bb%2?[0.18,0.37,0.66]:c3(PAL.crew));
+    }
+    // Hire: pale ghost figures lined up at the lodge door for crew hired this season (they start next season)
+    var ght = stamp('ghost', dc.ghosts);
+    for(var gh2=0; gh2<dc.ghosts; gh2++){
+      var gX=lodgeX+0.55, gZ=lodgeZ+0.25-gh2*0.1, gH=heightAt(gX,gZ,tg.rng2,tg.ridgeA), gsc=popScale(ght[gh2],now);
+      pushCyl(crew,gX,gH,gZ,crewR,bodyH*gsc,5,[0.86,0.9,0.97]);
+      pushOcta(crew,gX,gH+bodyH*gsc+headR*gsc,gZ,headR*gsc,[0.72,0.78,0.88]);
+    }
+    // Day-pass price: a ticket board by the lodge whose two digits read the day-pass slider (0-99).
+    // Only once something is built, so a bare mountain stays bare.
+    if(dc.runs>0 || state.lodgeBuilt){
+      var tA=0.3, tX=lodgeX+0.6, tZ=lodgeZ+0.6, tH=heightAt(tX,tZ,tg.rng2,tg.ridgeA);
+      var ttx=-Math.sin(tA), ttz=Math.cos(tA), tnx=Math.cos(tA), tnz=Math.sin(tA), tc=tH+0.34;
+      pushCyl(flags,tX-ttx*0.16,tH,tZ-ttz*0.16,0.014,0.26,5,c3(PAL.liftSteel));
+      pushCyl(flags,tX+ttx*0.16,tH,tZ+ttz*0.16,0.014,0.26,5,c3(PAL.liftSteel));
+      pushPlate(flags,tX,tc,tZ,tA,0.42,0.24,[0.1,0.11,0.13]);
+      pushPlate(flags,tX+tnx*0.003,tc+0.1,tZ+tnz*0.003,tA,0.42,0.04,c3(PAL.lodgeRoof));
+      var pv=Math.max(0,Math.min(99,Math.round((state.dayPrice==null?0.5:state.dayPrice)*100)));
+      var SEG=['abcdef','bc','abged','abgcd','fgbc','afgcd','afgedc','abc','abcdefg','abcdfg'];
+      var dw=0.08, dh=0.13, th=0.022;
+      var SP={a:[0,dh/2,1],d:[0,-dh/2,1],g:[0,0,1],f:[-dw/2,dh/4,0],b:[dw/2,dh/4,0],e:[-dw/2,-dh/4,0],c:[dw/2,-dh/4,0]};
+      // +tangent is the viewer's LEFT for an outward-facing plate: tens digit at +u, and a
+      // segment's screen-right offset is subtracted
+      [Math.floor(pv/10), pv%10].forEach(function(dg,di){
+        var u0 = di===0 ? 0.07 : -0.07;
+        SEG[dg].split('').forEach(function(sn){ var sp=SP[sn], u=u0-sp[0], v=-0.02+sp[1];
+          pushPlate(flags,tX+ttx*u+tnx*0.006,tc+v,tZ+ttz*u+tnz*0.006,tA,sp[2]?dw:th,sp[2]?th:dh/2,[1,0.85,0.3]); });
+      });
+    }
+    // Cost Redesign: a small solar array on the left-hand rim (a running-cost cut, now visible)
+    if(state.bets.costRedesign){
+      var sot = stamp('solar',1), sos=popScale(sot[0],now);
+      for(var srow=0; srow<2; srow++) for(var scol=0; scol<3; scol++){
+        var oA=-0.55-scol*0.07, oR=(0.93+srow*0.035)*R, oX=Math.cos(oA)*oR, oZ=Math.sin(oA)*oR, oH=heightAt(oX,oZ,tg.rng2,tg.ridgeA);
+        pushCyl(stage,oX,oH,oZ,0.01,0.07*sos,4,c3(PAL.liftSteel));
+        pushPanel(stage,oX,oH+0.1*sos,oZ,oA,0.16*sos,0.1*sos,1.0,[0.13,0.22,0.42]);
+      }
+    }
+    return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),
+      crew:toBuf(crew),guns:toBuf(guns),flags:toBuf(flags),gate:toBuf(gate),stage:toBuf(stage),
+      cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons)};
+  }
+
+  // ---------- GL buffer helpers ----------
+  function mkBuf(data){ var b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW); return b; }
+  // persistent GPU buffers: uploaded once when a batch's JS data is (re)built, not every frame
+  function glUp(buf){ if(!buf||!buf.count) return buf; buf.gp=mkBuf(buf.pos); buf.gn=mkBuf(buf.nrm); buf.gc=mkBuf(buf.col); return buf; }
+  function glFree(buf){ if(buf&&buf.gp){ gl.deleteBuffer(buf.gp); gl.deleteBuffer(buf.gn); gl.deleteBuffer(buf.gc); buf.gp=null; } }
+  function resetAttribs(){ for(var i=0;i<MAX_ATTRS;i++) gl.disableVertexAttribArray(i); }
+  function drawBatch(buf,mvp,model){
+    if(!buf || !buf.gp) return;
+    gl.useProgram(PROG); resetAttribs();
+    var aP=gl.getAttribLocation(PROG,'aPos'), aN=gl.getAttribLocation(PROG,'aNrm'), aC=gl.getAttribLocation(PROG,'aCol');
+    gl.bindBuffer(gl.ARRAY_BUFFER,buf.gp); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,buf.gn); gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,buf.gc); gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC,3,gl.FLOAT,false,0,0);
+    gl.uniformMatrix4fv(gl.getUniformLocation(PROG,'uMVP'),false,mvp);
+    gl.uniformMatrix4fv(gl.getUniformLocation(PROG,'uModel'),false,model);
+    gl.drawArrays(gl.TRIANGLES,0,buf.count);
+    drawCalls++;
+  }
+  function drawUnlit(buf,mvp,mode){
+    if(!buf || buf.count===0) return;
+    gl.useProgram(UPROG); resetAttribs();
+    var pb=mkBuf(buf.pos), cb=mkBuf(buf.col);
+    var aP=gl.getAttribLocation(UPROG,'aPos'), aC=gl.getAttribLocation(UPROG,'aCol');
+    gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,cb); gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC,3,gl.FLOAT,false,0,0);
+    gl.uniformMatrix4fv(gl.getUniformLocation(UPROG,'uMVP'),false,mvp);
+    gl.drawArrays(mode||gl.TRIANGLES,0,buf.count);
+    gl.deleteBuffer(pb); gl.deleteBuffer(cb);
+    drawCalls++;
+  }
+
+  // ---------- scene state ----------
+  var cache = {seed:null, seat:null, tg:null, slots:null, trees:null};
+  var lastFrame=null, yaw=0.3; // 0.3: the model's camera-facing centre (see the resolve-snap in mtnPreviewState's caller)
+  var snowFlakes=null, snowN=260;
+  var drawCalls=0, lastCounts={};
+  // dynamic props (everything but the moving chairs) are cached: rebuilt only when the state
+  // signature changes, or for 650ms after a change while pop-in tweens are still animating
+  var propsCache=null, propsKey=null, lastChairsBuf=null;
+  var state = null; // set via setState(); replaces the prototype's global STATE
+  function stateSig(s){ return [s.seed,s.seat,s.snow,s.cap,s.staff,s._util,s._reachHi,s.lodgeBuilt,
+    s.built.runs,s.built.lodging,s.built.events,s.bets.snowmaking,s.bets.megapass,s.bets.exclusivity,s.bets.valuesBrand,
+    s.built.marketing||0,s.bets.costRedesign,s.pendingHire||0,Math.round((s.dayPrice==null?0.5:s.dayPrice)*100)].join('|'); }
+  function ensureScene(){
+    if(cache.seed!==state.seed || cache.seat!==state.seat){
+      if(cache.tg){ gl.deleteBuffer(cache.tg.gp); gl.deleteBuffer(cache.tg.gn); gl.deleteBuffer(cache.tg.gi); if(cache.tg.gc) gl.deleteBuffer(cache.tg.gc); }
+      cache.tg = buildTerrain(state.seed,state.seat);
+      cache.tg.gp=mkBuf(cache.tg.pos); cache.tg.gn=mkBuf(cache.tg.nrm);
+      cache.tg.gi=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,cache.tg.gi); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,cache.tg.idx,gl.STATIC_DRAW);
+      cache.slots = runSlots(state.seed,state.seat);
+      cache.trees = buildTrees(state.seed,state.seat,cache.tg,cache.slots);
+      glUp(cache.trees.small); glUp(cache.trees.med); glUp(cache.trees.big);
+      cache.seed=state.seed; cache.seat=state.seat;
+      spawnTimes={}; propsKey=null;
+    }
+  }
+  function onStateChanged(){
+    ensureScene();
+    var terrColBuf = terrainColor(state,cache.tg,cache.slots);
+    if(cache.tg.gc) gl.deleteBuffer(cache.tg.gc); cache.tg.gc = mkBuf(terrColBuf);
+  }
+  function initSnow(){ snowFlakes=new Float32Array(snowN*3);
+    for(var i=0;i<snowN;i++){ snowFlakes[i*3]=(Math.random()-0.5)*R*2; snowFlakes[i*3+1]=Math.random()*3.5; snowFlakes[i*3+2]=(Math.random()-0.5)*R*2; } }
+
+  function draw(now, dtOverride){
+    var dt = dtOverride!==undefined?dtOverride:(lastFrame==null?0.016:Math.min(0.05,(now-lastFrame)/1000));
+    lastFrame=now;
+    drawCalls=0;
+    if(!glOK || !state) return;
+    resizeGl();
+    var sig = stateSig(state);
+    if(sig!==propsKey || tweenActive){
+      propsKey=sig; tweenActive=false;
+      if(propsCache) for(var fk in propsCache) if(fk!=='windows') glFree(propsCache[fk]);
+      propsCache = buildStaticProps(state,cache.tg,cache.slots,now);
+      for(var uk in propsCache) if(uk!=='windows') glUp(propsCache[uk]);
+    }
+    var chairsBuf = buildChairsBatch(state,cache.tg,now);
+    glFree(lastChairsBuf); glUp(chairsBuf.chairs); lastChairsBuf=chairsBuf.chairs;
+    var dynProps = propsCache;
+    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    var eyeDist=10.2, eyeH=1.7;
+    var eye=[Math.cos(yaw)*eyeDist, eyeH, Math.sin(yaw)*eyeDist];
+    var view = m4LookAt(eye,[0,2.3,0],[0,1,0]);
+    var proj = m4Persp(0.85, glCanvas.width/glCanvas.height, 0.1, 50);
+    var vp = m4Mul(proj,view);
+    var model = m4Id(), mvp = m4Mul(vp,model);
+    var sunDir = v3norm([0.5,0.65,-0.35]);
+    var skyTop = state.snow==='powder'?[0.227,0.302,0.431]:c3(PAL.skyTop);
+    var skyHor = state.snow==='drought'?[0.788,0.659,0.463]:c3(PAL.skyHor);
+    var fogCol = skyHor, fogStart = state.snow==='drought'?3.0:6.0, fogRange = state.snow==='drought'?12.0:22.0;
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(SPROG); resetAttribs();
+    var sunPt=[sunDir[0]*100,sunDir[1]*100,sunDir[2]*100], sf=projFrac(vp,sunPt);
+    var sunNdcX = (function(){var v=[sunPt[0],sunPt[1],sunPt[2],1],x=vp[0]*v[0]+vp[4]*v[1]+vp[8]*v[2]+vp[12]*v[3],w=vp[3]*v[0]+vp[7]*v[1]+vp[11]*v[2]+vp[15]*v[3];return x/w;})();
+    gl.uniform3fv(gl.getUniformLocation(SPROG,'uTop'), skyTop);
+    gl.uniform3fv(gl.getUniformLocation(SPROG,'uHor'), skyHor);
+    gl.uniform2fv(gl.getUniformLocation(SPROG,'uSunScr'), [sunNdcX, 1-2*sf]);
+    gl.uniform3fv(gl.getUniformLocation(SPROG,'uGlow'), [1,0.94,0.82]);
+    gl.bindBuffer(gl.ARRAY_BUFFER,skyBuf);
+    var skyAP=gl.getAttribLocation(SPROG,'aPos'); gl.enableVertexAttribArray(skyAP); gl.vertexAttribPointer(skyAP,2,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,6); drawCalls++;
+    gl.enable(gl.DEPTH_TEST);
+    gl.useProgram(PROG); resetAttribs();
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uSunDir'), sunDir);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uSunCol'), [1,0.93,0.78]);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uSkyCol'), skyHor);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uGndCol'), [0.35,0.3,0.22]);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uFogCol'), fogCol);
+    gl.uniform2fv(gl.getUniformLocation(PROG,'uFog'), [fogStart,fogRange]);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uEye'), eye);
+    var aP=gl.getAttribLocation(PROG,'aPos'), aN=gl.getAttribLocation(PROG,'aNrm'), aC=gl.getAttribLocation(PROG,'aCol');
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,cache.tg.gi);
+    gl.bindBuffer(gl.ARRAY_BUFFER,cache.tg.gp); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,cache.tg.gn); gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,cache.tg.gc); gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC,3,gl.FLOAT,false,0,0);
+    gl.uniformMatrix4fv(gl.getUniformLocation(PROG,'uMVP'),false,mvp);
+    gl.uniformMatrix4fv(gl.getUniformLocation(PROG,'uModel'),false,model);
+    gl.drawElements(gl.TRIANGLES,cache.tg.idx.length,gl.UNSIGNED_SHORT,0); drawCalls++;
+    drawBatch(cache.trees.small,mvp,model); drawBatch(cache.trees.med,mvp,model); drawBatch(cache.trees.big,mvp,model);
+    var dp=dynProps;
+    drawBatch(dp.towers,mvp,model); drawBatch(dp.cable,mvp,model); drawBatch(chairsBuf.chairs,mvp,model); drawBatch(dp.lodge,mvp,model);
+    drawBatch(dp.village,mvp,model); drawBatch(dp.crew,mvp,model); drawBatch(dp.guns,mvp,model);
+    drawBatch(dp.flags,mvp,model); drawBatch(dp.gate,mvp,model); drawBatch(dp.stage,mvp,model);
+    drawBatch(dp.markers,mvp,model); drawBatch(dp.barriers,mvp,model);
+    gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-1,-1);
+    drawBatch(dp.ribbons,mvp,model);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    drawUnlit(dp.windows,mvp);
+    if(state.snow==='powder'){
+      for(var i=0;i<snowN;i++){ snowFlakes[i*3+1]-=dt*0.6; if(snowFlakes[i*3+1]<0) snowFlakes[i*3+1]=3.5; }
+      gl.useProgram(PPROG); resetAttribs();
+      var spb=mkBuf(snowFlakes); var aP2=gl.getAttribLocation(PPROG,'aPos');
+      gl.bindBuffer(gl.ARRAY_BUFFER,spb); gl.enableVertexAttribArray(aP2); gl.vertexAttribPointer(aP2,3,gl.FLOAT,false,0,0);
+      gl.uniformMatrix4fv(gl.getUniformLocation(PPROG,'uMVP'),false,mvp);
+      gl.drawArrays(gl.POINTS,0,snowN); drawCalls++; gl.deleteBuffer(spb);
+    }
+    var dcSelf = mtnCounts(state), rimPt = [Math.cos(yaw)*R, 0, Math.sin(yaw)*R];
+    lastCounts = {
+      runsDrawn: dcSelf.runs, towersDrawn: dcSelf.towers,
+      crewDrawn: dcSelf.crew, closedRuns: dcSelf.closed, villageDrawn: dcSelf.village,
+      billboardsDrawn: dcSelf.billboards, ghostsDrawn: dcSelf.ghosts,
+      treesDrawn: cache.trees.small.count/9 + cache.trees.med.count/9 + cache.trees.big.count/9,
+      drawCalls: drawCalls, fps: fpsCounter.value,
+      summitFrac: Math.round(projFrac(vp,cache.tg.summit)*1000)/1000,
+      rimFrac: Math.round(projFrac(vp,rimPt)*1000)/1000
+    };
+    // advance for the NEXT frame, after this frame already drew at the yaw the caller set -- a
+    // caller wanting a held yaw (the resolve-reveal freeze) calls setYaw() again before the next
+    // render(), which overrides this before it is ever used to draw.
+    yaw += 0.15*dt;
+  }
+  function resizeGl(){ if(gl) gl.viewport(0,0,glCanvas.width,glCanvas.height); }
+  var fpsCounter = {value:0, frames:0, t0:0};
+
+  // ==================== public interface ====================
+  function init(canvasEl){
+    glCanvas = canvasEl;
+    gl = glCanvas.getContext('webgl');
+    glOK = !!gl;
+    if (glOK) {
+      PROG = link(VS,FS); PPROG = link(PVS,PFS); UPROG = link(UVS,UFS); SPROG = link(SVS,SFS);
+      gl.enable(gl.DEPTH_TEST);
+      skyBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,skyBuf);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1]),gl.STATIC_DRAW);
+      MAX_ATTRS = gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+    } else {
+      // WebGL unavailable: the prototype's text fallback, so Market view keeps working regardless.
+      var ctx2 = glCanvas.getContext('2d');
+      ctx2.fillStyle='#111'; ctx2.fillRect(0,0,glCanvas.width,glCanvas.height);
+      ctx2.fillStyle='#fff'; ctx2.font='20px sans-serif'; ctx2.fillText('WebGL is unavailable', 20,40);
+    }
+    initSnow();
+    fpsCounter.t0 = performance.now();
+  }
+  function setState(s){
+    var changed = !state || stateSig(s) !== stateSig(state);
+    state = s;
+    if (changed && gl) onStateChanged();
+  }
+  function setYaw(y){ yaw = y; }
+  function getYaw(){ return yaw; }
+  function render(nowMs){
+    if (!glCanvas) return;
+    var dpr = window.devicePixelRatio || 1;
+    var cw = glCanvas.clientWidth, ch = glCanvas.clientHeight;
+    var wantW = Math.round(cw*dpr), wantH = Math.round(ch*dpr);
+    if (glCanvas.width !== wantW || glCanvas.height !== wantH) { glCanvas.width = wantW; glCanvas.height = wantH; }
+    if (!glOK) return;
+    draw(nowMs);
+    fpsCounter.frames++;
+    if (nowMs - fpsCounter.t0 > 1000) {
+      fpsCounter.value = Math.round(fpsCounter.frames*1000/(nowMs-fpsCounter.t0));
+      fpsCounter.frames = 0; fpsCounter.t0 = nowMs;
+    }
+  }
+  function selfTest(){
+    if (state) draw(performance.now(), 0.016);
+    return { runsDrawn:lastCounts.runsDrawn||0, towersDrawn:lastCounts.towersDrawn||0, crewDrawn:lastCounts.crewDrawn||0,
+      closedRuns:lastCounts.closedRuns||0, villageDrawn:lastCounts.villageDrawn||0,
+      billboardsDrawn:lastCounts.billboardsDrawn||0, ghostsDrawn:lastCounts.ghostsDrawn||0, treesDrawn:Math.round(lastCounts.treesDrawn||0),
+      drawCalls:lastCounts.drawCalls||0, fps:fpsCounter.value, summitFrac:lastCounts.summitFrac||0, rimFrac:lastCounts.rimFrac||0 };
+  }
+  window.fpsCounter = fpsCounter; // compatibility: powder/_tools/fps-probe.mjs reads window.fpsCounter.value
+  return { init, setState, setYaw, getYaw, render, selfTest };
+})();
+window.__selfTest = () => MountainGL.selfTest();
+// Mountain-view frame driver, called from loop() exactly like the old diorama's renderMountain():
+// feeds the live build-in-progress state in except in demo mode (a fixed state, set once at boot),
+// holds the resolve-reveal yaw during its freeze window, then renders.
+function renderMountain(){
+  const nowMs = performance.now();
+  if (!MTN_DEMO) MountainGL.setState(mtnPreviewState());
+  if (nowMs < mtnFreezeUntil) MountainGL.setYaw(0.3);
+  MountainGL.render(nowMs);
+}
+
+// ==========================================================================
+// ---- lock in: write the decision, do not resolve anything here ----
+// ==========================================================================
+document.getElementById('lockBtn').addEventListener('click', async ()=>{
+  if (GAME.phase !== 'board') return;
+  const btn = document.getElementById('lockBtn');
+  btn.disabled = true;
+  const payload = {
+    spend: { runs: spend.runs, lodging: spend.lodging, events: spend.events, marketing: spend.marketing },
+    price: { day: dayPassPrice, lodge: lodgePrice },
+    capacityDial: spend.opsCost,
+    hire: spend.hire,
+    buyBet: selectedBet,
+    stageGuess,
+    rationale: document.getElementById('rationale').value.trim(),
+    revision: SUBMITTED_SEASON === GAME.season ? 1 : 0,
+  };
+  const { error } = await supa.from('powder_decisions').insert({ game_id: GAME.id, team_id: ME.id, season: GAME.season, kind: 'season_submitted', payload });
+  if (error) { note('Could not submit: ' + error.message, true); btn.disabled = false; return; }
+  if (stageGuess) await logDecision('stage_guess', { stageGuess });
+  if (payload.rationale) await logDecision('rationale', { text: payload.rationale });
+  await refreshSubmitState();
+});
+
+document.getElementById('helpBtn').addEventListener('click', ()=>{ document.getElementById('introOverlay').classList.remove('hidden'); });
+(function(){
+  const btn = document.getElementById('mapThemeBtn');
+  function applyMapChrome(){
+    btn.textContent = MAP_THEME.key==='paper' ? 'Map: Paper' : 'Map: Night';
+    document.getElementById('boardWrap').classList.toggle('mapLight', MAP_THEME.key==='paper');
+  }
+  btn.addEventListener('click', ()=>{ MAP_THEME = MAP_THEME.key==='paper' ? MAP_THEMES.night : MAP_THEMES.paper; applyMapChrome(); });
+  applyMapChrome();
+})();
+document.getElementById('introClose').addEventListener('click', ()=>{ document.getElementById('introOverlay').classList.add('hidden'); });
+
+// ==========================================================================
+// ---- end of game ----
+// ==========================================================================
+function renderReplayStrip(){
+  const p = engineState.resorts[engineState.playerIdx];
+  const axisLabels = ['Terrain', 'Comfort', 'Price'];
+  const cells = [];
+  const hist = p.posHistory || [];
+  for (let s = 0; s < CONFIG.SEASONS; s++) {
+    const pos = hist[s] || p.pos;
+    const { shares } = segMassShares(s, engineState.env);
+    let biggest = SEGMENTS[0], biggestMass = -1;
+    SEGMENTS.forEach(seg => { if (shares[seg.id] > biggestMass) { biggestMass = shares[seg.id]; biggest = seg; } });
+    const biggestVec = segVecAt(biggest, s);
+    const bigColor = SEG_COLORS[biggest.id].join(',');
+    const bars = axisLabels.map((lbl, i) => `
+      <div style="font-size:9px;color:var(--dim);text-align:left;">${lbl}</div>
+      <div style="position:relative;height:9px;background:#332c24;border-radius:3px;margin:1px 0 4px;">
+        <div style="position:absolute;left:${(biggestVec[i]*100).toFixed(0)}%;top:-2px;width:3px;height:13px;background:rgba(${bigColor},0.95);border-radius:1px;"></div>
+        <div style="position:absolute;left:${(pos[i]*100).toFixed(0)}%;top:-2px;width:3px;height:13px;background:${firmColor(p)};border-radius:1px;"></div>
+      </div>`).join('');
+    cells.push(`<div style="flex:0 0 92px;text-align:center;"><div style="font-size:11px;color:var(--text);margin-bottom:4px;">Season ${s+1}</div>${bars}<div style="font-size:10px;color:var(--dim);margin-top:2px;">${biggest.name.split('/')[0]} ${(biggestMass*100).toFixed(0)}%</div></div>`);
+  }
+  return `<h3 style="color:var(--gold);font-size:13px;margin:14px 0 6px;">Replay: your position vs the biggest segment, season by season</h3>
+    <div style="display:flex;gap:8px;overflow-x:auto;padding:6px 2px;">${cells.join('')}</div>
+    <div style="font-size:11px;color:var(--dim);margin-top:2px;">Your colour marks your position each season; the segment's colour marks the biggest buyer group's need on that axis. Close overlap means you were chasing it; a wide, steady gap means you were drifting.</div>`;
+}
+function computeEpitaph(p, rank){
+  const still = engineState.log.filter(e => e.lines.some(l => l.cls === 'decay')).length;
+  if (p.lodgeBuilt && rank===1) return 'You bought the gate open and the high-comfort crowd rewarded the patience.';
+  if (!p.lodgeBuilt && rank<=2) return 'You never touched Lodging and still held ground: a terrain-only strategy, doubling down where you already stood.';
+  if (still>=2) return 'The mountain moved and you did not. Track-out ate more of your fit than the final score shows.';
+  if (rank===1) return 'You read the drift correctly more seasons than not, and the levers followed.';
+  return 'A workable run. No single storm caught you cleanly, but none of them buried you either.';
+}
+function showEnd(){
+  const rs = engineState.resorts.filter(r => r.score != null);
+  if (!rs.length) return;
+  const sorted = [...rs].sort((a,b)=>b.score-a.score);
+  const p = rs.find(r => r.i === MY_SEAT);
+  const rank = sorted.findIndex(f => f.i === MY_SEAT) + 1;
+  document.getElementById('endTitle').textContent = rank === 1 ? 'You held the mountain' : `${nameOf(sorted[0])} took the season`;
+  document.getElementById('endEpitaph').textContent = computeEpitaph(p, rank);
+  document.getElementById('endTable').innerHTML = '<tr><th>Resort</th><th>Score</th><th>Cash</th></tr>' +
+    sorted.map(f=>`<tr><td>${f.i===MY_SEAT?'<b>YOU: ':''}${nameOf(f)}${f.i===MY_SEAT?'</b>':''}</td><td>$${f.score.toFixed(0)}</td><td>$${f.cash.toFixed(0)}</td></tr>`).join('');
+  document.getElementById('replayStrip').innerHTML = renderReplayStrip();
+  document.getElementById('lockBtn').disabled = true;
+  note('Six seasons done. The debrief is on the projector.');
+  showOverlay('endOverlay');
+}
+document.getElementById('endClose').addEventListener('click', ()=>{ endOverlayDismissed = true; document.getElementById('endOverlay').classList.add('hidden'); });
+
+// ==========================================================================
+// ---- dev-only mountain demo hook (?mtnDemo=bare|s1|s3|maxed): headless screenshots and
+// projector rehearsal. Skips join, hides overlays, sets Mountain view, and renders one of these
+// four engine-realistic states directly -- no database calls, no engineState/GAME at all. Values
+// are seed 7's "engaged table" trajectory (runs 8/lodging 6/events 2/dial 10/hire 1 per season),
+// the same states used for the progress.log mtnCounts table. A normal visit never sets this.
+// ==========================================================================
+const MTN_DEMO_STATES = {
+  bare: { seed:7, seat:0, season:0, snow:'normal', cap:100, staff:100, _util:1, _reachHi:0.75,
+    lodgeBuilt:false, built:{runs:0,lodging:0,events:0,marketing:0},
+    bets:{snowmaking:false,megapass:false,exclusivity:false,costRedesign:false,valuesBrand:false} },
+  s1: { seed:7, seat:0, season:1, snow:'normal', cap:103.4, staff:100, _util:0.841, _reachHi:1,
+    lodgeBuilt:true, pendingHire:9, dayPrice:0.5, built:{runs:8,lodging:6,events:2,marketing:4},
+    bets:{snowmaking:false,megapass:false,exclusivity:false,costRedesign:false,valuesBrand:false} },
+  s3: { seed:7, seat:0, season:3, snow:'drought', cap:110.2, staff:118, _util:0.931, _reachHi:1,
+    lodgeBuilt:true, pendingHire:9, dayPrice:0.45, built:{runs:24,lodging:18,events:6,marketing:8},
+    bets:{snowmaking:false,megapass:false,exclusivity:false,costRedesign:false,valuesBrand:false} },
+  // per PORT-BRIEF-2.md, "maxed" is the engaged table's season-6 state (not the old broke-by-S6
+  // showcase) so the demo stays a realistic table, not a table that went bankrupt.
+  maxed: { seed:7, seat:0, season:6, snow:'normal', cap:120.4, staff:145, _util:1, _reachHi:1,
+    lodgeBuilt:true, pendingHire:9, dayPrice:0.62, built:{runs:48,lodging:36,events:12,marketing:16},
+    bets:{snowmaking:true,megapass:true,exclusivity:false,costRedesign:true,valuesBrand:false} },
+};
+const MTN_DEMO = (() => {
+  const m = new URLSearchParams(location.search).get('mtnDemo');
+  return Object.prototype.hasOwnProperty.call(MTN_DEMO_STATES, m) ? m : null;
+})();
+
+// ==========================================================================
+// ---- boot ----
+// ==========================================================================
+spend = { runs:0, lodging:0, events:0, marketing:0, opsCost:8, hire:0 };
+(async function boot(){
+  if (MTN_DEMO) {
+    hideOverlays();
+    document.getElementById('introOverlay').classList.add('hidden');
+    setBoardView('mountain');
+    MountainGL.setState(MTN_DEMO_STATES[MTN_DEMO]);
+    return;
+  }
+  const code = new URLSearchParams(location.search).get('code');
+  if (code) document.getElementById('joinCode').value = code.toUpperCase();
+  if (await tryRejoin()) { enterGame(); return; }
+  forgetJoin();
+  showOverlay('seatOverlay');
+})();
+loop();
+</script>
+</body>
+</html>
