@@ -2276,7 +2276,19 @@ const MountainGL = (() => {
       var arr = sizeR<0.5?small:(sizeR<0.85?med:big);
       var scale = (sizeR<0.5?0.12:(sizeR<0.85?0.18:0.26)) * (0.7+rnd()*0.7); // wider size variance, less planted
       var jx=x+(rnd()-0.5)*0.14, jz=z+(rnd()-0.5)*0.14, jh=heightAt(jx,jz,tg.rng2,tg.ridgeA);
-      pushPine(arr,jx,jh,jz,scale*0.64,scale*2.05,colr,lerp3(c3(PAL.forSh),colr,rnd()*0.36));
+      var shadeT=rnd()*0.36, yawR=rnd()*Math.PI*2, kindR=rnd();
+      if(PROPS.pine_a && PROPS.pine_b){
+        // species by place: bare larches near the tree line, boulders on steep rock, two pine
+        // silhouettes elsewhere; each instance gets its own yaw and grove tint
+        var slopeY=terrainNormalAt(jx,jz,tg.rng2,tg.ridgeA)[1];
+        var kind = (slopeY<0.62 && kindR<0.5 && PROPS.boulder_a) ? (kindR<0.25?'boulder_a':'boulder_b')
+                 : (elevFrac>0.42 && kindR<0.45 && PROPS.larch) ? 'larch'
+                 : (kindR<0.5 ? 'pine_a' : 'pine_b');
+        if(kind==='boulder_a'||kind==='boulder_b') pushMesh(arr,null,kind,jx,jh,jz,yawR,scale*2.6);
+        else pushMesh(arr,null,kind,jx,jh,jz,yawR,scale*3.4,{needles:lerp3(colr,c3(PAL.forSh),shadeT*0.5)});
+      } else {
+        pushPine(arr,jx,jh,jz,scale*0.64,scale*2.05,colr,lerp3(c3(PAL.forSh),colr,shadeT));
+      }
       placed++;
     }
     return {small:toBuf(small), med:toBuf(med), big:toBuf(big), placed:placed};
