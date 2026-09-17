@@ -445,13 +445,13 @@ const MAP_THEMES = {
     sphereHighlight:'#ffffff'
   },
   paper: {
-    key:'paper', ground:'#e5edf0', fogBG:[229,237,240],
-    axis:'#53626d', gridRGB:[122,136,146], wallComfort:[37,102,111], wallPrice:[200,85,43],
-    cloudComposite:'multiply', cloudAlpha:[0.72,0.42,0.08], cloudColorScale:0.74,
-    segLabel:'#19262f', firmLabel:'#19262f',
-    playerOutline:'#19262f', rivalOutline:'rgba(25,38,47,0.35)',
-    anchorRGBA:'rgba(25,38,47,', shadowRGBA:'rgba(25,38,47,',
-    sphereHighlight:'#ffffff'
+    key:'paper', ground:'#e9e0ca', fogBG:[233,224,202],
+    axis:'#5a4e40', gridRGB:[158,142,116], wallComfort:[34,86,92], wallPrice:[185,79,50],
+    cloudComposite:'multiply', cloudAlpha:[0.62,0.36,0.08], cloudColorScale:0.80,
+    segLabel:'#1f2b34', firmLabel:'#1f2b34',
+    playerOutline:'#1f2b34', rivalOutline:'rgba(31,43,52,0.35)',
+    anchorRGBA:'rgba(31,43,52,', shadowRGBA:'rgba(31,43,52,',
+    sphereHighlight:'#fff6e6'
   }
 };
 let MAP_THEME = MAP_THEMES[['night','dark'].includes(new URLSearchParams(location.search).get('map')) ? 'night' : 'paper'];
@@ -882,7 +882,8 @@ function loop(){ if (BOARD_VIEW === 'mountain') renderMountain(); else render();
 // ==========================================================================
 // One saturated colour per seat. Student seats cycle the warm set; the two named rivals keep the
 // hues the single-player build gave their archetypes so anyone who saw that build recognises them.
-const SEAT_COLORS = ['#e2743f','#54bd6f','#e8c44d','#3fc2bd','#d97ad4','#8fb3ff','#f0a35c','#a4d65e','#4f9de6','#d64f63'];
+// the prop palette (fan-gun orange, tram teal, ticket gold, patrol red, navy glass, forest green...)
+const SEAT_COLORS = ['#e56a1c','#2f8a94','#e0b65b','#c9412a','#3f6fa8','#4a8a3c','#b94f9a','#8a6a3a','#5fb0d6','#d64f63'];
 function firmColor(f){ return SEAT_COLORS[f.i % SEAT_COLORS.length]; }
 function nameOf(f){ const t = TEAM_BY_SEAT[f.i]; return t ? t.name : 'Seat ' + (f.i + 1); }
 
@@ -1556,6 +1557,7 @@ function mtnPreviewState(){
   const snow = (GAME.world.snowTrace || [])[s] || 'normal';
   return {
     seed: GAME.world.seed, seat: MY_SEAT, season: engineState.s, snow,
+    name: (typeof ME !== 'undefined' && ME && ME.name) ? ME.name : '', // on the entrance sign and ticket board
     cap: previewCap, staff: staffNow, _util: util, _reachHi: p._reachHi == null ? 0.75 : p._reachHi,
     lodgeBuilt: previewLodge,
     built: { runs: (built.runs||0) + spend.runs, lodging: (built.lodging||0) + spend.lodging,
@@ -1674,6 +1676,40 @@ const MountainGL = (() => {
     'float fog=clamp(farFog+baseFog,0.0,0.80);gl_FragColor=vec4(mix(lit,uFogCol,fog),1.0);}';  var PVS='attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=2.5;}';
   var PFS='precision mediump float;void main(){gl_FragColor=vec4(0.95,0.97,1.0,0.85);}';
   var UVS='attribute vec3 aPos;attribute vec3 aCol;uniform mat4 uMVP;uniform float uPt;varying vec3 vC;void main(){vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=uPt;}';
+  // textured quads: the resort name (a canvas-2D texture) on the entrance sign and ticket board
+  var TVS='attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;varying vec2 vUV;void main(){vUV=aUV;gl_Position=uMVP*vec4(aPos,1.0);}';
+  var TFS='precision mediump float;varying vec2 vUV;uniform sampler2D uTex;void main(){gl_FragColor=texture2D(uTex,vUV);}';
+  var TPROG=null, nameTex=null, nameTexText=null;
+  function makeNameTex(text){
+    var c=document.createElement('canvas'); c.width=512; c.height=96; var x=c.getContext('2d');
+    x.fillStyle='#1f2b34'; x.fillRect(0,0,512,96); x.strokeStyle='#e0b65b'; x.lineWidth=6; x.strokeRect(7,7,498,82);
+    x.fillStyle='#f3efe4'; x.font='bold 52px "Atkinson Hyperlegible",system-ui,sans-serif'; x.textAlign='center'; x.textBaseline='middle';
+    var t=String(text).toUpperCase(); while(x.measureText(t).width>468 && t.length>3) t=t.slice(0,-1);
+    x.fillText(t,256,50);
+    var tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D,null); return tex;
+  }
+  function pushTextQuad(arr,cx,cy,cz,ang,w,h){ // faces outward along (cos ang, sin ang), like pushPlate
+    var tx=-Math.sin(ang),tz=Math.cos(ang);
+    var p0=[cx-tx*w/2,cy-h/2,cz-tz*w/2],p1=[cx+tx*w/2,cy-h/2,cz+tz*w/2],p2=[cx+tx*w/2,cy+h/2,cz+tz*w/2],p3=[cx-tx*w/2,cy+h/2,cz-tz*w/2];
+    [[p0,1,0],[p1,0,0],[p2,0,1],[p2,0,1],[p3,1,1],[p0,1,0]].forEach(function(q){ arr.p.push(q[0][0],q[0][1],q[0][2]); arr.uv.push(q[1],q[2]); });
+  }
+  function drawTextured(buf,mvp,tex){
+    if(!buf || !buf.count || !tex) return;
+    gl.useProgram(TPROG); resetAttribs();
+    var pb=mkBuf(buf.pos), ub=mkBuf(buf.uv);
+    var aP=gl.getAttribLocation(TPROG,'aPos'), aU=gl.getAttribLocation(TPROG,'aUV');
+    gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,ub); gl.enableVertexAttribArray(aU); gl.vertexAttribPointer(aU,2,gl.FLOAT,false,0,0);
+    gl.uniformMatrix4fv(gl.getUniformLocation(TPROG,'uMVP'),false,mvp);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,tex); gl.uniform1i(gl.getUniformLocation(TPROG,'uTex'),1);
+    gl.drawArrays(gl.TRIANGLES,0,buf.count);
+    gl.deleteBuffer(pb); gl.deleteBuffer(ub); gl.activeTexture(gl.TEXTURE0);
+    drawCalls++;
+  }
   var UFS='precision mediump float;varying vec3 vC;uniform float uGain;void main(){gl_FragColor=vec4(vC*uGain,1.0);}';
   var SVS='attribute vec2 aPos;varying vec2 vP;void main(){vP=aPos;gl_Position=vec4(aPos,0.9999,1.0);}';
   // Sky: a cream-to-sand gradient with a soft sun glow, a haze band at the horizon (NDC y=0, the
@@ -2437,7 +2473,7 @@ const MountainGL = (() => {
     // Active slots are camera-prioritized so early builds read clearly from the default view.
     var activeIdx=activeRunIndices(state,slots);
     var towers=newArr(), lodge=newArr(), village=newArr(), crew=newArr(), guns=newArr(), flags=newArr(), gate=newArr(), stage=newArr(), landmarks=newArr(), gondolas=newArr(), skirt=newArr();
-    var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr(), glowDiscs=newArr();
+    var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr(), glowDiscs=newArr(), signs={p:[],uv:[]};
     // lamplight pools (drawn additively at dusk only; harmless otherwise): warm amber under lodgings
     var duskNow=((state.season||0)>=4 && (state.built.lodging||0)>=18);
     function lamp(x,y,z,r,c){ if(duskNow) pushFlatOval(glowDiscs,x,y+0.02,z,r,r*0.8,14,c||[0.26,0.16,0.05]); }
@@ -2469,6 +2505,14 @@ const MountainGL = (() => {
       pushAFrameLodge(lodge,windows,lx,lh,lz,0.92*sc);
       hit(lx,lh+0.35,lz,0.55,'Base lodge: Lodging built (comfort gate open)');
       lamp(lx+0.45,lh,lz,0.55,[0.30,0.19,0.06]);
+      if(state.name){ // entrance sign: the resort name on two timber posts at the plaza edge
+        var sX=lx+0.95*sc,sZ=lz-0.70*sc,sH=heightAt(sX,sZ,tg.rng2,tg.ridgeA),sA=0.3,stx=-Math.sin(sA),stz=Math.cos(sA);
+        pushCyl(lodge,sX-stx*0.36,sH,sZ-stz*0.36,0.018,0.34,5,c3(PAL.lodgeWood));
+        pushCyl(lodge,sX+stx*0.36,sH,sZ+stz*0.36,0.018,0.34,5,c3(PAL.lodgeWood));
+        pushPlate(lodge,sX-Math.cos(sA)*0.004,sH+0.29,sZ-Math.sin(sA)*0.004,sA,0.84,0.18,c3(PAL.lodgeRoof));
+        pushTextQuad(signs,sX,sH+0.29,sZ,sA,0.80,0.15);
+        hit(sX,sH+0.29,sZ,0.4,state.name+': your resort');
+      }
       emit(lx-0.05*0.97,lh+0.88*0.97,lz+0.30*0.97,[0.62,0.60,0.58],-0.25,0.42,0.10,3.2,0.10); // chimney smoke
       pushSnowmobile(lodge,lx+0.42*sc,lh,lz-0.36*sc,0.18,0.58*sc);
       if(PROPS.rental_shack){
@@ -2603,6 +2647,7 @@ const MountainGL = (() => {
       pushCyl(flags,tX+ttx*0.16,tH,tZ+ttz*0.16,0.014,0.26,5,c3(PAL.liftSteel));
       pushPlate(flags,tX,tc,tZ,tA,0.42,0.24,[0.1,0.11,0.13]);
       hit(tX,tc,tZ,0.25,'Ticket board: your day-pass price');
+      if(state.name) pushTextQuad(signs,tX+tnx*0.006,tc+0.165,tZ+tnz*0.006,tA,0.42,0.075);
       pushPlate(flags,tX+tnx*0.003,tc+0.1,tZ+tnz*0.003,tA,0.42,0.04,c3(PAL.lodgeRoof));
       var pv=Math.max(0,Math.min(99,Math.round((state.dayPrice==null?0.5:state.dayPrice)*100)));
       var SEG=['abcdef','bc','abged','abgcd','fgbc','afgcd','afgedc','abc','abcdefg','abcdfg'];
@@ -2630,7 +2675,8 @@ const MountainGL = (() => {
       if(state.built.events>0) lamp(R*0.77-0.1,heightAt(R*0.77,-R*0.19,tg.rng2,tg.ridgeA),-R*0.19-0.2,0.4); }
     return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),gondolas:toBuf(gondolas),skirt:toBuf(skirt),
       crew:toBuf(crew),guns:toBuf(guns),flags:toBuf(flags),gate:toBuf(gate),stage:toBuf(stage),
-      cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons),glowDiscs:toBuf(glowDiscs)};
+      cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons),glowDiscs:toBuf(glowDiscs),
+      signs:{pos:new Float32Array(signs.p),uv:new Float32Array(signs.uv),count:signs.p.length/3}};
   }
 
   // ---------- GL buffer helpers ----------
@@ -2696,7 +2742,7 @@ const MountainGL = (() => {
   var state = null; // set via setState(); replaces the prototype's global STATE
   function stateSig(s){ return [s.seed,s.seat,s.snow,s.cap,s.staff,s._util,s._reachHi,s.lodgeBuilt,
     s.built.runs,s.built.lodging,s.built.events,s.bets.snowmaking,s.bets.megapass,s.bets.exclusivity,s.bets.valuesBrand,
-    s.built.marketing||0,s.bets.costRedesign,s.pendingHire||0,Math.round((s.dayPrice==null?0.5:s.dayPrice)*100)].join('|'); }
+    s.built.marketing||0,s.bets.costRedesign,s.pendingHire||0,Math.round((s.dayPrice==null?0.5:s.dayPrice)*100),s.name||''].join('|'); }
   function ensureScene(){
     if(cache.seed!==state.seed || cache.seat!==state.seat){
       if(cache.tg){ gl.deleteBuffer(cache.tg.gp); gl.deleteBuffer(cache.tg.gn); gl.deleteBuffer(cache.tg.gi); if(cache.tg.gc) gl.deleteBuffer(cache.tg.gc); if(cache.tg.gfx) gl.deleteBuffer(cache.tg.gfx); }
@@ -2719,6 +2765,8 @@ const MountainGL = (() => {
   }
   function onStateChanged(){
     ensureScene();
+    var nm = state.name || '';
+    if (nm !== nameTexText) { if (nameTex) gl.deleteTexture(nameTex); nameTex = nm ? makeNameTex(nm) : null; nameTexText = nm; }
     var terrColBuf = terrainColor(state,cache.tg,cache.slots);
     var terrFxBuf = terrainEffects(state,cache.tg,cache.slots);
     if(cache.tg.gc) gl.deleteBuffer(cache.tg.gc); cache.tg.gc = mkBuf(terrColBuf);
@@ -2736,9 +2784,9 @@ const MountainGL = (() => {
     var sig = stateSig(state);
     if(sig!==propsKey || tweenActive){
       propsKey=sig; tweenActive=false;
-      if(propsCache) for(var fk in propsCache) if(fk!=='windows') glFree(propsCache[fk]);
+      if(propsCache) for(var fk in propsCache) if(fk!=='windows'&&fk!=='signs') glFree(propsCache[fk]);
       propsCache = buildStaticProps(state,cache.tg,cache.slots,now);
-      for(var uk in propsCache) if(uk!=='windows') glUp(propsCache[uk]);
+      for(var uk in propsCache) if(uk!=='windows'&&uk!=='signs') glUp(propsCache[uk]);
     }
     var chairsBuf = buildChairsBatch(state,cache.tg,cache.slots,now);
     glFree(lastChairsBuf); glUp(chairsBuf.chairs); lastChairsBuf=chairsBuf.chairs;
@@ -2817,6 +2865,7 @@ const MountainGL = (() => {
     drawBatch(dp.ribbons,mvp,model);
     gl.disable(gl.POLYGON_OFFSET_FILL);
     drawUnlit(dp.windows,mvp,null,dusk?1.4:1.0);
+    drawTextured(dp.signs,mvp,nameTex);
     if(dusk && dp.glowDiscs && dp.glowDiscs.count){ // additive pools of lamplight on the snow around the base
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE); gl.depthMask(false);
       drawUnlit(dp.glowDiscs,mvp);
@@ -2856,7 +2905,7 @@ const MountainGL = (() => {
     gl = glCanvas.getContext('webgl');
     glOK = !!gl;
     if (glOK) {
-      PROG = link(VS,FS); PPROG = link(PVS,PFS); UPROG = link(UVS,UFS); SPROG = link(SVS,SFS); DPROG = link(DVS,DFS);
+      PROG = link(VS,FS); PPROG = link(PVS,PFS); UPROG = link(UVS,UFS); SPROG = link(SVS,SFS); DPROG = link(DVS,DFS); TPROG = link(TVS,TFS);
       gl.enable(gl.DEPTH_TEST);
       initShadow();
       skyBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,skyBuf);
@@ -3035,18 +3084,18 @@ document.getElementById('endClose').addEventListener('click', ()=>{ endOverlayDi
 // the same states used for the progress.log mtnCounts table. A normal visit never sets this.
 // ==========================================================================
 const MTN_DEMO_STATES = {
-  bare: { seed:7, seat:0, season:0, snow:'normal', cap:100, staff:100, _util:1, _reachHi:0.75,
+  bare: { name:'Sentinel Peak', seed:7, seat:0, season:0, snow:'normal', cap:100, staff:100, _util:1, _reachHi:0.75,
     lodgeBuilt:false, built:{runs:0,lodging:0,events:0,marketing:0},
     bets:{snowmaking:false,megapass:false,exclusivity:false,costRedesign:false,valuesBrand:false} },
-  s1: { seed:7, seat:0, season:1, snow:'normal', cap:103.4, staff:100, _util:0.841, _reachHi:1,
+  s1: { name:'Sentinel Peak', seed:7, seat:0, season:1, snow:'normal', cap:103.4, staff:100, _util:0.841, _reachHi:1,
     lodgeBuilt:true, pendingHire:9, dayPrice:0.5, built:{runs:8,lodging:6,events:2,marketing:4},
     bets:{snowmaking:false,megapass:false,exclusivity:false,costRedesign:false,valuesBrand:false} },
-  s3: { seed:7, seat:0, season:3, snow:'drought', cap:110.2, staff:118, _util:0.931, _reachHi:1,
+  s3: { name:'Sentinel Peak', seed:7, seat:0, season:3, snow:'drought', cap:110.2, staff:118, _util:0.931, _reachHi:1,
     lodgeBuilt:true, pendingHire:9, dayPrice:0.45, built:{runs:24,lodging:18,events:6,marketing:8},
     bets:{snowmaking:false,megapass:false,exclusivity:false,costRedesign:false,valuesBrand:false} },
   // per PORT-BRIEF-2.md, "maxed" is the engaged table's season-6 state (not the old broke-by-S6
   // showcase) so the demo stays a realistic table, not a table that went bankrupt.
-  maxed: { seed:7, seat:0, season:6, snow:'normal', cap:120.4, staff:145, _util:1, _reachHi:1,
+  maxed: { name:'Sentinel Peak', seed:7, seat:0, season:6, snow:'normal', cap:120.4, staff:145, _util:1, _reachHi:1,
     lodgeBuilt:true, pendingHire:9, dayPrice:0.62, built:{runs:48,lodging:36,events:12,marketing:16},
     bets:{snowmaking:true,megapass:true,exclusivity:false,costRedesign:true,valuesBrand:false} },
 };
