@@ -1581,28 +1581,47 @@ const MountainGL = (() => {
   // ---------- terrain heightfield (polar disc mesh: guarantees a circular footprint, no square skirt) ----------
   var RINGS = 72, SECTORS = 128, R = 5.2, PEAK_H = R*0.90;
   function heightAt(x,z,rng2,ridgeA){
-    // Art-directed trio: a sharp central sentinel, a broad western forge, and an open eastern bowl.
+    // Three deliberate profiles: Sentinel knife-edge, Forge headwall, Sun Peak powder bowl.
     var r=Math.hypot(x,z)/R,u=x,v=z;
     function g(cu,cv,wu,wv,h){var du=(u-cu)/(wu*R),dv=(v-cv)/(wv*R);return Math.exp(-(du*du+dv*dv))*h;}
     function mesa(cu,cv,wu,wv,h){var du=Math.abs((u-cu)/(wu*R)),dv=Math.abs((v-cv)/(wv*R));
-      var d=Math.pow(du,4)+Math.pow(dv,4);return Math.pow(Math.max(0,1-d),0.38)*h;}
-    var apron=Math.pow(Math.max(0,1-r/1.04),1.02)*PEAK_H*0.29;
-    var sentinel=g(-0.18*R,0,0.205,0.17,PEAK_H*0.73)+g(-0.22*R,0.015*R,0.105,0.09,PEAK_H*0.17);
-    var forge=mesa(-0.015*R,-0.43*R,0.31,0.235,PEAK_H*0.55);
-    var sunPeak=g(0.015*R,0.43*R,0.325,0.245,PEAK_H*0.61);
-    var westRidge=g(-0.02*R,-0.22*R,0.34,0.13,PEAK_H*0.22);
-    var eastRidge=g(-0.04*R,0.23*R,0.36,0.14,PEAK_H*0.24);
+      var d=Math.pow(du,4)+Math.pow(dv,4);return Math.pow(Math.max(0,1-d),0.34)*h;}
+    function peak(cu,cv,wu,wv,h,p){var du=(u-cu)/(wu*R),dv=(v-cv)/(wv*R),d=Math.sqrt(du*du+dv*dv);
+      return Math.pow(Math.max(0,1-d),p||0.75)*h;}
+    var apron=Math.pow(Math.max(0,1-r/1.04),1.02)*PEAK_H*0.285;
+
+    // Sentinel: an asymmetric double fin and narrow axial ridge, never a circular crater.
+    var sentinelCore=g(-0.19*R,-0.005*R,0.19,0.15,PEAK_H*0.67);
+    var sentinelNorth=g(-0.23*R,-0.065*R,0.115,0.078,PEAK_H*0.115);
+    var sentinelSouth=g(-0.135*R,0.075*R,0.125,0.082,PEAK_H*0.105);
+    var sentinelRidge=g(-0.09*R,0.005*R,0.31,0.082,PEAK_H*0.145);
+    var sentinel=sentinelCore+sentinelNorth+sentinelSouth+sentinelRidge;
+
+    // Forge: a broad shouldered crown with a lower projecting buttress.
+    var forgeCrown=mesa(0.075*R,-0.50*R,0.285,0.215,PEAK_H*0.49);
+    var forgeShoulder=g(0.105*R,-0.46*R,0.41,0.18,PEAK_H*0.255);
+    var forgeButtress=g(0.18*R,-0.64*R,0.34,0.12,PEAK_H*0.13);
+    var forge=Math.max(forgeCrown,forgeShoulder)+forgeButtress*0.62;
+
+    // Sun Peak: a long wind-loaded shoulder wrapped around one clearly off-centre bowl.
+    var sunCrown=peak(0.045*R,0.46*R,0.40,0.29,PEAK_H*0.59,0.78);
+    var sunWing=g(0.13*R,0.61*R,0.42,0.15,PEAK_H*0.21);
+    var sunPeak=Math.max(sunCrown,sunWing)+g(-0.01*R,0.27*R,0.36,0.135,PEAK_H*0.145);
+
+    var westLink=g(0.015*R,-0.25*R,0.34,0.115,PEAK_H*0.16);
+    var eastLink=g(-0.035*R,0.22*R,0.37,0.11,PEAK_H*0.16);
     var crest=Math.max(sentinel,forge,sunPeak);
-    var linked=(sentinel+forge+sunPeak-crest)*0.12+westRidge+eastRidge;
+    var linked=(sentinel+forge+sunPeak-crest)*0.085+westLink+eastLink;
     var h=apron+crest+linked;
-    // The bowl belongs to Sun Peak only; the Sentinel face stays open and directional.
-    var powderBowl=g(0.16*R,0.35*R,0.21,0.19,PEAK_H*0.13);
-    h-=powderBowl*Math.max(0,1-r*0.72);
+
+    var powderBowl=g(0.17*R,0.39*R,0.19,0.165,PEAK_H*0.115);
+    h-=powderBowl*Math.max(0,1-r*0.70);
+
     var high=Math.max(sentinel,forge,sunPeak)/PEAK_H;
-    var broad=(hashN(x*0.58,z*0.58,rng2)-0.5)*0.16;
-    var crag=(hashN(x*2.1,z*2.1,rng2+29.0)-0.5)*(0.045+high*0.11);
-    h+=(broad+crag)*Math.pow(Math.max(0,1-r),0.50);
-    return Math.max(0,Math.min(PEAK_H*1.10,h));
+    var broad=(hashN(x*0.52,z*0.52,rng2)-0.5)*0.135;
+    var crag=(hashN(x*2.0,z*2.0,rng2+29.0)-0.5)*(0.035+high*0.085);
+    h+=(broad+crag)*Math.pow(Math.max(0,1-r),0.55);
+    return Math.max(0,Math.min(PEAK_H*1.12,h));
   }
   function buildTerrain(seed,seat){
     var rnd = mulberry32(seed*31+seat), ridgeA = 0, rng2 = rnd()*1000;
@@ -1653,7 +1672,8 @@ const MountainGL = (() => {
   function terrainColor(state,tg,slots){
     var wOff=state.snow==='powder'?-0.10:(state.snow==='drought'?0.15:0),snowLine=0.40+wOff;
     var snowCol=c3(PAL.snowLit),snowShade=c3(PAL.snowSh),forestCol=c3(PAL.forLit),meadowCol=c3(PAL.meadow);
-    var rockCol=c3(PAL.rock),inkCol=c3(PAL.runOut),runCol=c3(PAL.runCor),runEdge=c3(PAL.runOut);
+    var inkCol=c3(PAL.runOut),runCol=c3(PAL.runCor),runEdge=c3(PAL.runOut);
+    var sentinelRock=[0.34,0.38,0.39],forgeRock=[0.67,0.43,0.27],sunRock=[0.69,0.53,0.39];
     if(state.snow==='powder') snowCol=lerp3(snowCol,[1,1,1],0.34);
     var fogRimCol=state.snow==='drought'?[0.77,0.68,0.55]:c3(PAL.skyHor);
     var sunA=-0.7,sunDir2=[Math.cos(sunA),Math.sin(sunA)],dc=mtnCounts(state);
@@ -1665,16 +1685,36 @@ const MountainGL = (() => {
       var snowMix=Math.max(0,Math.min(1,(elevFrac-snowLine)/0.10));
       var low=state.snow==='drought'?lerp3(forestCol,meadowCol,0.72):lerp3(forestCol,meadowCol,0.13);
       var base=lerp3(low,snowCol,snowMix);
+      var wx=Math.cos(m.ang)*m.r*R,wz=Math.sin(m.ang)*m.r*R;
+
+      // Soft peak ownership lets geology change character without visible region seams.
+      var sw=Math.exp(-Math.pow((wx+0.19*R)/(0.25*R),2)-Math.pow(wz/(0.23*R),2));
+      var fw=Math.exp(-Math.pow((wx+0.015*R)/(0.39*R),2)-Math.pow((wz+0.43*R)/(0.28*R),2));
+      var uw=Math.exp(-Math.pow((wx-0.025*R)/(0.40*R),2)-Math.pow((wz-0.43*R)/(0.29*R),2));
+      var wsum=sw+fw+uw+0.0001;sw/=wsum;fw/=wsum;uw/=wsum;
+      var rockCol=[
+        sentinelRock[0]*sw+forgeRock[0]*fw+sunRock[0]*uw,
+        sentinelRock[1]*sw+forgeRock[1]*fw+sunRock[1]*uw,
+        sentinelRock[2]*sw+forgeRock[2]*fw+sunRock[2]*uw
+      ];
       var steep=Math.max(0,Math.min(1,(0.76-normY)/0.23));
       var rockT=elevFrac>0.29?steep*Math.max(0,Math.min(1,(elevFrac-0.27)/0.20)):0;
-      base=lerp3(base,rockCol,rockT*0.91);
+      base=lerp3(base,rockCol,rockT*0.92);
       var blueShade=Math.max(0,Math.min(1,(0.88-normY)/0.30))*(1-rockT);
       base=lerp3(base,snowShade,blueShade*snowMix*0.38);
-      var wx=Math.cos(m.ang)*m.r*R,wz=Math.sin(m.ang)*m.r*R;
-      var ribA=0.5+0.5*Math.sin(wz*7.2+m.h*2.1+wx*0.75);
-      var ribB=0.5+0.5*Math.sin(wz*3.4-m.h*4.6+1.3);
-      var strata=0.24+0.76*ribA*(0.58+0.42*ribB);
-      base=lerp3(base,inkCol,rockT*strata*0.12);
+
+      // Sentinel ribs run vertically, Forge ledges horizontally, Sun Peak strata diagonally.
+      var sentinelRibs=Math.pow(0.5+0.5*Math.sin(wz*8.8+m.h*1.15+wx*0.55),1.65);
+      var forgeLedges=Math.pow(0.5+0.5*Math.sin(m.h*10.8+wz*0.65),1.45);
+      var sunStrata=Math.pow(0.5+0.5*Math.sin((wx-wz)*3.25+m.h*3.2+0.8),1.35);
+      var strata=sentinelRibs*sw+forgeLedges*fw+sunStrata*uw;
+      base=lerp3(base,inkCol,rockT*strata*(0.11+sw*0.08));
+
+      // Wind-loaded crowns get a restrained cream cornice highlight, strongest on Sun Peak.
+      var highSnow=Math.max(0,Math.min(1,(elevFrac-0.60)/0.20));
+      var shelf=Math.max(0,Math.min(1,(normY-0.48)/0.34));
+      base=lerp3(base,[1.0,0.985,0.93],snowMix*highSnow*shelf*(0.08+uw*0.12+fw*0.04));
+
       for(var ri=0;ri<activeIdx.length;ri++){
         var si=activeIdx[ri],slot=slots[si];
         if(m.r>=slot.topR && m.r<=0.92){
@@ -1820,6 +1860,44 @@ const MountainGL = (() => {
     pushBox(body,x+0.31*scale,y+0.08*scale,z,0.08*scale,0.08*scale,0.16*scale,[0.38,0.25,0.18]);
     pushQuadX(lights,x+0.315*scale,y+0.12*scale,z,0.12*scale,0.08*scale,[0.96,0.68,0.30]);
   }
+  function pushObservationDeck(body,tg,scale){
+    var x=-0.105*R,z=-0.075*R,y=heightAt(x,z,tg.rng2,tg.ridgeA)+0.025;
+    var wood=c3(PAL.lodgeWood),steel=c3(PAL.liftSteel),roof=[0.22,0.27,0.27],snow=c3(PAL.snowLit);
+    pushBox(body,x,y+0.035*scale,z,0.26*scale,0.035*scale,0.18*scale,wood);
+    var corners=[[-0.21,-0.13],[-0.21,0.13],[0.21,-0.13],[0.21,0.13]];
+    for(var i=0;i<corners.length;i++) pushCyl(body,x+corners[i][0]*scale,y,z+corners[i][1]*scale,0.014*scale,0.25*scale,5,steel);
+    pushBox(body,x,y+0.20*scale,z-0.17*scale,0.26*scale,0.014*scale,0.014*scale,steel);
+    pushBox(body,x,y+0.20*scale,z+0.17*scale,0.26*scale,0.014*scale,0.014*scale,steel);
+    pushBox(body,x-0.25*scale,y+0.20*scale,z,0.014*scale,0.014*scale,0.17*scale,steel);
+    pushBox(body,x+0.25*scale,y+0.20*scale,z,0.014*scale,0.014*scale,0.17*scale,steel);
+    pushPrism(body,x,y+0.29*scale,z,0.21*scale,0.11*scale,0.15*scale,roof);
+    pushPrism(body,x,y+0.305*scale,z,0.17*scale,0.07*scale,0.155*scale,snow);
+  }
+  function pushGondolaCabin(body,cx,cy,cz,scale){
+    pushBox(body,cx,cy,cz,0.075*scale,0.085*scale,0.065*scale,c3(PAL.crew));
+    pushBox(body,cx,cy+0.045*scale,cz,0.077*scale,0.045*scale,0.067*scale,[0.13,0.22,0.24]);
+    pushPrism(body,cx,cy+0.13*scale,cz,0.082*scale,0.045*scale,0.072*scale,c3(PAL.lodgeRoof));
+    pushCyl(body,cx,cy+0.16*scale,cz,0.009*scale,0.10*scale,5,c3(PAL.cable));
+  }
+  function buildGondolaLine(towers,cable,cabins,landmarks,windows,tg,now){
+    var baseAng=0.43,baseRr=0.82,topAng=1.18,topRr=0.47,towerH=0.72;
+    var bx=Math.cos(baseAng)*baseRr*R,bz=Math.sin(baseAng)*baseRr*R;
+    var tx=Math.cos(topAng)*topRr*R,tz=Math.sin(topAng)*topRr*R;
+    var by=heightAt(bx,bz,tg.rng2,tg.ridgeA)+towerH,ty=heightAt(tx,tz,tg.rng2,tg.ridgeA)+towerH;
+    var tt=stamp('gondola',5),prevTop=null;
+    for(var i=0;i<5;i++){
+      var t=i/4,x=bx+(tx-bx)*t,z=bz+(tz-bz)*t,h=heightAt(x,z,tg.rng2,tg.ridgeA),sc=popScale(tt[i],now);
+      pushCyl(towers,x,h,z,0.026,towerH*sc,6,c3(PAL.liftSteel));
+      pushBox(towers,x,h+towerH*sc,z,0.16,0.025,0.026,c3(PAL.liftSteel));
+      var top=[x,h+towerH*sc,z];if(prevTop)pushRibbon(cable,prevTop,top,0.014,c3(PAL.cable));prevTop=top;
+    }
+    for(var ci=0;ci<4;ci++){
+      var p=(0.14+ci*0.22)%1,cx=bx+(tx-bx)*p,cz=bz+(tz-bz)*p,cy=by+(ty-by)*p-0.13;
+      pushGondolaCabin(cabins,cx,cy,cz,1.0);
+    }
+    pushLiftTerminal(landmarks,windows,tg,baseAng,baseRr,0.86);
+    pushLiftTerminal(landmarks,windows,tg,topAng,topRr,0.72);
+  }
   function newArr(){ return {p:[],n:[],c:[]}; }
   function toBuf(arr){ return {pos:new Float32Array(arr.p), nrm:new Float32Array(arr.n), col:new Float32Array(arr.c), count:arr.p.length/3}; }
 
@@ -1870,7 +1948,8 @@ const MountainGL = (() => {
       var x=bx+(tx-bx)*t, z=bz+(tz-bz)*t, h=heightAt(x,z,tg.rng2,tg.ridgeA);
       var sc=popScale(tt[i],now);
       pushCyl(towers,x,h,z,0.022,towerH*sc,6,c3(PAL.liftSteel));
-      pushBox(towers,x,h+towerH*sc,z,0.12,0.024,0.024,c3(PAL.liftSteel));
+      var crossArm=key==='tw2'?0.16:0.12;
+      pushBox(towers,x,h+towerH*sc,z,crossArm,0.024,0.024,c3(PAL.liftSteel));
       var top=[x,h+towerH*sc,z];
       if(prevTop) pushRibbon(cable,prevTop,top,0.012,c3(PAL.cable));
       prevTop=top;
@@ -1916,7 +1995,7 @@ const MountainGL = (() => {
     var dc = mtnCounts(state);
     // Active slots are camera-prioritized so early builds read clearly from the default view.
     var activeIdx=activeRunIndices(state,slots);
-    var towers=newArr(), lodge=newArr(), village=newArr(), crew=newArr(), guns=newArr(), flags=newArr(), gate=newArr(), stage=newArr(), landmarks=newArr();
+    var towers=newArr(), lodge=newArr(), village=newArr(), crew=newArr(), guns=newArr(), flags=newArr(), gate=newArr(), stage=newArr(), landmarks=newArr(), gondolas=newArr();
     var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr();
     var LODGE_H = 0.66, towerH = LODGE_H*0.8, baseR = 0.74;
     var lodgeX = R*0.80, lodgeZ = 0; // reference point for banner/gate/stage even if the lodge box itself isn't built yet
@@ -1927,11 +2006,13 @@ const MountainGL = (() => {
     pushRoadArc(landmarks,tg,0.91,-0.94,0.72,0.13,[0.34,0.31,0.27]);
     var plazaY=heightAt(lodgeX,lodgeZ,tg.rng2,tg.ridgeA)+0.028;
     pushFlatOval(landmarks,lodgeX,plazaY,lodgeZ,0.68,0.52,24,[0.77,0.72,0.62]);
+    if(dc.chutes) pushObservationDeck(landmarks,tg,0.86);
     // lift 1 runs up one flank from the lodge apron; a second lift starts on the OTHER flank once
     // the count would exceed 7 towers on a single line (a picket fence)
     var nTowers = dc.towers;
     var lift1N = Math.min(nTowers,7), lift2N = Math.max(0,Math.min(7,nTowers-7));
     if(nTowers>0) pushLiftTerminal(landmarks,windows,tg,0.25,0.74,1.0);
+    if(lift2N>0) pushLiftTerminal(landmarks,windows,tg,-0.25,0.74,0.82);
     buildLiftLine(towers,cable,tg, 0.25,0.74, 0.6,0.35, lift1N, 'tw1', towerH, now);
     buildLiftLine(towers,cable,tg, -0.25,0.74, -0.6,0.35, lift2N, 'tw2', towerH, now);
     if(state.lodgeBuilt){
@@ -2012,6 +2093,7 @@ const MountainGL = (() => {
       pushCyl(flags,bx,bh,bz,0.012,0.22*fs,5,c3(PAL.liftSteel));
       pushBox(flags,bx+0.05*fs,bh+0.19*fs,bz,0.05*fs,0.03*fs,0.006,c3(PAL.crew));
       pushBox(flags,bx+0.05*fs,bh+0.13*fs,bz,0.05*fs,0.03*fs,0.006,[1,1,1]);
+      buildGondolaLine(towers,cable,gondolas,landmarks,windows,tg,now);
     }
     if(state.bets.exclusivity || state.bets.valuesBrand){
       var gg = stamp('gate',1), gs2=popScale(gg[0],now);
@@ -2072,7 +2154,7 @@ const MountainGL = (() => {
         pushPanel(stage,oX,oH+0.1*sos,oZ,oA,0.16*sos,0.1*sos,1.0,[0.13,0.22,0.42]);
       }
     }
-    return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),
+    return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),gondolas:toBuf(gondolas),
       crew:toBuf(crew),guns:toBuf(guns),flags:toBuf(flags),gate:toBuf(gate),stage:toBuf(stage),
       cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons)};
   }
@@ -2206,7 +2288,7 @@ const MountainGL = (() => {
     drawBatch(cache.trees.small,mvp,model); drawBatch(cache.trees.med,mvp,model); drawBatch(cache.trees.big,mvp,model);
     var dp=dynProps;
     drawBatch(dp.landmarks,mvp,model);
-    drawBatch(dp.towers,mvp,model); drawBatch(dp.cable,mvp,model); drawBatch(chairsBuf.chairs,mvp,model); drawBatch(dp.lodge,mvp,model);
+    drawBatch(dp.towers,mvp,model); drawBatch(dp.cable,mvp,model); drawBatch(chairsBuf.chairs,mvp,model); drawBatch(dp.gondolas,mvp,model); drawBatch(dp.lodge,mvp,model);
     drawBatch(dp.village,mvp,model); drawBatch(dp.crew,mvp,model); drawBatch(dp.guns,mvp,model);
     drawBatch(dp.flags,mvp,model); drawBatch(dp.gate,mvp,model); drawBatch(dp.stage,mvp,model);
     drawBatch(dp.markers,mvp,model); drawBatch(dp.barriers,mvp,model);
