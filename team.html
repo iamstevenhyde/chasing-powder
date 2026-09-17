@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Chasing Powder</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M2 28 L12 8 L17 16 L21 11 L30 28 Z%27 fill=%27%23e8eef2%27/%3E%3Cpath d=%27M2 28 L12 8 L15 13 L9 28 Z%27 fill=%27%23b8c6cf%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -205,6 +206,25 @@
     padding:10px 12px;margin:0 0 10px;font-size:13px;line-height:1.45;}
   #readLogStrip{font-family:var(--font-mono);font-size:11.5px;max-height:240px;overflow-y:auto;}
   #readReportLine b{color:var(--gold);}
+  /* Mountain view (2026-09-17 late): the season log leaves the mountain. Only the latest report
+     shows, as a narrow card at top-left that clears the summit; older seasons sit behind the
+     Season log toggle in #mtnLogPanel (newest first, scrollable, closed by default). */
+  #boardWrap.mtnView #logStrip{display:none;}
+  #boardWrap.mtnView #reportLine{right:auto;max-width:min(360px,34%);font-size:12.5px;padding:7px 11px;}
+  #boardWrap.mtnView #reportLine .tick{display:none;}
+  #boardWrap.mtnView #reportLine:empty{display:none;}
+  #boardWrap.mtnView #mtnCaption{right:auto;max-width:min(360px,34%);text-align:left;}
+  #mtnLogPanel{position:absolute;top:46px;right:14px;width:min(360px,36%);max-height:calc(100% - 60px);overflow-y:auto;
+    font-family:var(--font-mono);font-size:11.5px;line-height:1.5;color:var(--text);background:rgba(10,24,29,.92);
+    border:1px solid var(--line);border-radius:8px;padding:8px 12px;z-index:11;display:none;}
+  #mtnLogPanel .seasonHd{font-family:var(--font-mono);color:var(--teal);text-transform:uppercase;letter-spacing:.12em;font-size:10px;margin:8px 0 2px;}
+  #mtnLogPanel .seasonHd:first-child{margin-top:0;}
+  #mtnLogPanel .ln{margin-bottom:2px;}
+  #mtnLogPanel .ln.gate{color:var(--teal);}
+  #mtnLogPanel .ln.decay{color:var(--danger);}
+  #mtnLogPanel .ln.market{color:var(--gold);}
+  #mtnLogPanel .ln.contest{color:#d9a3cf;}
+  #mtnLogPanel .ln.weather{color:#9db8d9;}
 .lever .t .lico{width:30px;height:30px;vertical-align:middle;margin:-6px 6px -4px 0;image-rendering:auto}
 #mtnTip{position:absolute;display:none;pointer-events:none;z-index:6;font-size:12px;line-height:1.35;color:var(--text);background:rgba(10,24,29,.94);border:1px solid var(--gold);border-radius:6px;padding:4px 9px;max-width:250px;transform:translate(-50%,-115%)}
 #mtnKeyBtn.off{opacity:.55}
@@ -234,8 +254,10 @@
       <button id="viewMountainBtn">Mountain</button>
       <button id="mtnSpinBtn" type="button" hidden>Pause spin</button>
       <button id="mtnKeyBtn" type="button" hidden aria-pressed="false" class="off">Key</button>
+      <button id="mtnLogBtn" type="button" hidden aria-pressed="false" class="off">Season log</button>
     </div>    <div id="mtnCaption"></div>
     <div id="mtnTip"></div>
+    <div id="mtnLogPanel" aria-label="Season log, newest first"></div>
     <div id="reportLine"></div>
     <div id="logStrip"></div>
     <div id="segPopup"></div>
@@ -260,6 +282,7 @@
       <div class="lgRow"><span class="lgMark" style="color:#ff8f1f">&#9679;</span> Orange peg = crew (pale peg = hired, arrives next season)</div>
       <div class="lgRow"><span class="lgMark" style="color:var(--danger)">&#10005;</span> Red bar = a run closed, understaffed</div>
       <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9650;</span> Helipad and patrol base = expert chutes open</div>
+      <div class="lgRow"><span class="lgMark" style="color:#c9a36b">&#9650;</span> Summit restaurant = season 5+ with $40 of runs; floodlights = night skiing, season 6+ with $30 of lodging</div>
     </div>
     <div id="dossierBox" style="display:none;position:absolute;top:56px;right:14px;width:260px;
       font-size:11.5px;color:var(--text);background:rgba(28,25,21,.92);border:1px solid var(--line);
@@ -1080,6 +1103,7 @@ async function onNewSeason(){
     // so those come back for that one alone.
     for (let k = 0; k < s - 1; k++) narrateSeason(p, k, true);
     narrateSeason(p, s - 1);
+    seedRevealBaseline(); // the mountain is already built to season s; no reveal replays it
   }
   LAST_APPLIED_SEASON = s;
   document.getElementById('seasonNum').textContent = Math.min(s + 1, CONFIG.SEASONS);
@@ -1332,7 +1356,7 @@ function updateReport(){
     const gateLine = last && last.lines.find(l=>l.cls==='gate');
     mainHtml = `<b>Patrol Report, season ${Math.min(engineState.s+1, CONFIG.SEASONS)}:</b> cash $${p.cash.toFixed(0)}, profit-to-date $${(p.profit||0).toFixed(0)}. ${gateLine ? gateLine.text : (last && last.lines[0] ? last.lines[0].text : '')}`;
   }
-  const tickerHtml = (engineState.tickerLines || []).map(t => `<div style="margin-top:4px;font-size:12px;color:var(--dim);">${t}</div>`).join('');
+  const tickerHtml = (engineState.tickerLines || []).map(t => `<div class="tick" style="margin-top:4px;font-size:12px;color:var(--dim);">${t}</div>`).join('');
   rl.innerHTML = mainHtml + tickerHtml;
   const readRl = document.getElementById('readReportLine');
   if (readRl) readRl.innerHTML = rl.innerHTML;
@@ -1345,6 +1369,16 @@ function updateLogStrip(){
   box.innerHTML = html || '<div class="ln">No teaching events yet. Season 1 is yours to open.</div>';
   const readLog = document.getElementById('readLogStrip');
   if (readLog) readLog.innerHTML = box.innerHTML;
+  // Mountain view history: every season, newest first, behind the Season log toggle
+  const panel = document.getElementById('mtnLogPanel');
+  if (panel) {
+    let ph = '';
+    engineState.log.slice().reverse().forEach(entry => {
+      ph += `<div class="seasonHd">Season ${entry.season}</div>`;
+      entry.lines.forEach(l => { ph += `<div class="ln ${l.cls}">${l.text}</div>`; });
+    });
+    panel.innerHTML = ph || '<div class="ln">No seasons resolved yet.</div>';
+  }
 }
 // Dossiers: the two named rivals carry their real strategic identity. Other tables are just
 // names and a colour; what they are up to is for you to read off the board.
@@ -1375,8 +1409,12 @@ document.getElementById('dossierBtn').addEventListener('click', ()=>{
 // ---- Market / Mountain toggle over the board canvas ----
 // ==========================================================================
 let BOARD_VIEW = 'market';
+var mtnLogOn = false; // Season log panel in Mountain view, closed by default
 function setBoardView(v){
   BOARD_VIEW = v;
+  document.getElementById('boardWrap').classList.toggle('mtnView', v === 'mountain');
+  document.getElementById('mtnLogBtn').hidden = v !== 'mountain';
+  document.getElementById('mtnLogPanel').style.display = (v === 'mountain' && mtnLogOn) ? 'block' : 'none';
   document.getElementById('viewMarketBtn').classList.toggle('on', v === 'market');
   document.getElementById('viewMountainBtn').classList.toggle('on', v === 'mountain');
   document.getElementById('legendBox').style.display = v === 'mountain' ? 'none' : '';
@@ -1402,6 +1440,12 @@ mtnKeyBtn.addEventListener('click', () => {
   mtnKeyOn = !mtnKeyOn;
   mtnKeyBtn.classList.toggle('off', !mtnKeyOn); mtnKeyBtn.setAttribute('aria-pressed', String(mtnKeyOn));
   document.getElementById('mtnLegendBox').style.display = mtnKeyOn ? 'block' : 'none';
+});
+const mtnLogBtn = document.getElementById('mtnLogBtn');
+mtnLogBtn.addEventListener('click', () => {
+  mtnLogOn = !mtnLogOn;
+  mtnLogBtn.classList.toggle('off', !mtnLogOn); mtnLogBtn.setAttribute('aria-pressed', String(mtnLogOn));
+  document.getElementById('mtnLogPanel').style.display = mtnLogOn ? 'block' : 'none';
 });
 const mtnTip = document.getElementById('mtnTip');
 function hideMtnTip(){ mtnTip.style.display = 'none'; }
@@ -1526,10 +1570,13 @@ function startSeasonReveal(p, seasonIdx){
   if (st.bets.snowmaking && !prevBets.snowmaking) add('Snowmaking on', ['gun']);
   if (st.bets.megapass && !prevBets.megapass) add('Megapass: tram running', ['gondola', 'flag']);
   if (st.bets.costRedesign && !prevBets.costRedesign) add('Cost redesign: solar array', ['solar']);
+  if (now.summitLodge && !prev.summitLodge) add('Summit restaurant opens', ['summit']);
+  if (now.nightLights && !prev.nightLights) add('Night skiing: floodlights on the first run', ['lights']);
   if ((now.closed || 0) > 0) add(now.closed + (now.closed === 1 ? ' run closed (understaffed)' : ' runs closed (understaffed)'), ['bar']);
   if ((now.ghosts || 0) > 0) add('Hired crew arrive next season', ['ghost']);
   PREV_MTN_COUNTS = now; PREV_MTN_BETS = Object.assign({}, st.bets); PREV_MTN_LODGE = st.lodgeBuilt;
   PREV_MTN_LODGING = st.built.lodging || 0; PREV_MTN_EVENTS = st.built.events || 0;
+  window.LAST_REVEAL_LINES = lines.map(l => l.text); // read by _tools/live-run.mjs
   clearReveal();
   if (MountainGL.__inited) MountainGL.setReveal(delays);
   const lead = 'Season ' + (seasonIdx + 1) + ' resolved.';
@@ -1540,6 +1587,14 @@ function startSeasonReveal(p, seasonIdx){
   return total;
 }
 let PREV_MTN_BETS = null, PREV_MTN_LODGE = false, PREV_MTN_LODGING = 0, PREV_MTN_EVENTS = 0;
+// Rejoin mid-game (refresh, dropped wifi): start the reveal diff from what is already built, not
+// from an empty mountain, or the next resolve would pop in every run, tower and cabin again.
+function seedRevealBaseline(){
+  const st = mtnPreviewState();
+  PREV_MTN_COUNTS = mtnCounts(st); PREV_MTN_BETS = Object.assign({}, st.bets); PREV_MTN_LODGE = st.lodgeBuilt;
+  PREV_MTN_LODGING = st.built.lodging || 0; PREV_MTN_EVENTS = st.built.events || 0;
+  window.REVEAL_BASELINE = Object.assign({}, PREV_MTN_COUNTS); // read by _tools/live-run.mjs --rejoin
+}
 // State for the mountain is either the player's resolved engine state, or, while a plan is being
 // built, that state plus the pending sliders (mission item 2: live preview of what BUILD is doing).
 // Guards p.built missing for older rows by treating it as zeros. Shape matches MountainGL's STATE
@@ -1582,7 +1637,13 @@ function mtnCounts(state){
   const chutes = (state._reachHi||0) >= 0.999;
   const billboards = Math.min(6, Math.ceil((state.built.marketing||0)/4)); // one billboard per $4 of cumulative marketing
   const ghosts = Math.min(6, Math.round((state.pendingHire||0)/3));          // 3 pale figures per crew hired this season
-  return { runs, towers, crew, village, closed, chutes, billboards, ghosts };
+  // season-keyed landmarks (2026-09-17 late): late seasons were adding more of the same, so a
+  // mature resort earns new kinds of thing. Summit restaurant from season 5 once $40 of runs are
+  // cut; night skiing (floodlights on the first run) from season 6 once $30 of lodging is built.
+  const season = state.season || 0;
+  const summitLodge = season >= 5 && (state.built.runs||0) >= 40;
+  const nightLights = season >= 6 && (state.built.lodging||0) >= 30;
+  return { runs, towers, crew, village, closed, chutes, billboards, ghosts, summitLodge, nightLights };
 }
 
 // ==========================================================================
@@ -2284,8 +2345,8 @@ const MountainGL = (() => {
     }
   }
   function pushEventVillage(body,glow,tg,scale){
-    var bx=R*0.77,bz=-R*0.19,by=heightAt(bx,bz,tg.rng2,tg.ridgeA),cols=[[0.72,0.16,0.10],[0.16,0.36,0.58],[0.25,0.50,0.30]];
-    if(PROPS.tubing_lane) pushMesh(body,glow,'tubing_lane',bx+0.10,heightAt(bx+0.10,bz-0.62,tg.rng2,tg.ridgeA),bz-0.62,-0.35,scale*0.9);
+    var bx=R*0.822,bz=-R*0.254,by=heightAt(bx,bz,tg.rng2,tg.ridgeA),cols=[[0.72,0.16,0.10],[0.16,0.36,0.58],[0.25,0.50,0.30]];
+    if(PROPS.tubing_lane) pushMesh(body,glow,'tubing_lane',bx+0.10,heightAt(bx+0.10,bz-0.45,tg.rng2,tg.ridgeA),bz-0.45,-0.35,scale*0.9);
     hit(bx-0.1,by+0.15,bz-0.2,0.45,'Event village: Summer Events spend (drought hedge)');
     for(var i=0;i<2;i++){
       var x=bx-0.22*i,z=bz-0.24*i,y=heightAt(x,z,tg.rng2,tg.ridgeA),c=cols[i];
@@ -2445,7 +2506,7 @@ const MountainGL = (() => {
     var lift1N=Math.min(nTowers,7),lift2N=Math.max(0,Math.min(7,nTowers-7));
     buildLiftChairs(chairs,tg,0.25,0.74,0.6,0.35,lift1N,towerH,2,now);
     buildLiftChairs(chairs,tg,-0.25,0.74,-0.6,0.35,lift2N,towerH,2,now);
-    var active=activeRunIndices(state,slots),nSkiers=Math.min(18,active.length*2);
+    var active=activeRunIndices(state,slots),nSkiers=Math.min(24,active.length*2+mtnCounts(state).towers);
     for(var i=0;i<nSkiers;i++){var phase=(now*0.000035+i/Math.max(1,nSkiers)+(i%3)*0.071)%1;pushSkier(skiers,tg,slots[active[i%active.length]],phase,i);}
     // tram cabins travel the cable (two up, two down), only once the Megapass bet exists
     if(state.bets.megapass){
@@ -2524,10 +2585,10 @@ const MountainGL = (() => {
       }
       var nV = dc.village;
       var vt = stamp('vil',nV);
+      var VSLOTS=[[0.52,-0.08],[0.52,0.08],[0.60,-0.08],[0.60,0.08],[0.52,-0.22],[0.52,0.22],[0.60,-0.22],[0.60,0.22],[0.68,-0.08],[0.68,0.08]];
       for(var i2=0;i2<nV;i2++){
-        var side = i2%2===0?1:-1;
-        var vAng = Math.max(-0.35,Math.min(0.35, side*(0.08+Math.floor(i2/2)*0.09)));
-        var vR = (0.72 + (Math.floor(i2/2)%3)*0.08);
+        var vSlot = VSLOTS[i2%VSLOTS.length];
+        var vAng = vSlot[1], vR = vSlot[0];
         var vx = Math.cos(vAng)*vR*R, vz = Math.sin(vAng)*vR*R;
         var vh = heightAt(vx,vz,tg.rng2,tg.ridgeA); var vs=popScale(vt[i2],now);
         var roofTone=i2%3===0?[0.27,0.22,0.20]:(i2%3===1?[0.38,0.27,0.22]:c3(PAL.lodgeRoof));
@@ -2543,8 +2604,8 @@ const MountainGL = (() => {
     var nFigures = dc.crew;
     var crewH = LODGE_H*0.35, bodyH = crewH*0.7, headR = crewH*0.15, crewR=0.0825;
     var clusters = [];
-    if(nTowers>0) clusters.push({ang:0.25, r:baseR});
-    if(state.lodgeBuilt) clusters.push({ang:0.1, r:0.78});
+    if(nTowers>0) clusters.push({ang:0.30, r:0.83});   // below the lift terminal, not on it
+    if(state.lodgeBuilt) clusters.push({ang:-0.13, r:0.90}); // front-left of the plaza, clear of the lodge and ticket board
     if(dc.runs>0) clusters.push({ang:slots[activeIdx[0]].ang, r:0.12});
     if(dc.runs>1) clusters.push({ang:slots[activeIdx[1]].ang, r:0.12});
     if(clusters.length===0) clusters.push({ang:0.6, r:0.3});
@@ -2617,6 +2678,26 @@ const MountainGL = (() => {
       var st=stamp('stage',1),ss=popScale(st[0],now);
       pushEventVillage(stage,windows,tg,ss);
     }
+    // ---- season-keyed landmarks (mtnCounts decides; see there) ----
+    if(dc.summitLodge){ // summit restaurant on the shoulder above the top of lift 1
+      var smA=0.78, smR=0.34, smX=Math.cos(smA)*smR*R, smZ=Math.sin(smA)*smR*R, smH=heightAt(smX,smZ,tg.rng2,tg.ridgeA);
+      var smt=stamp('summit',1), sms=popScale(smt[0],now);
+      pushAFrameLodge(landmarks,windows,smX,smH,smZ,0.42*sms);
+      pushPlate(landmarks,smX+Math.cos(smA)*0.22*sms,smH+0.14*sms,smZ+Math.sin(smA)*0.22*sms,smA,0.16*sms,0.07*sms,c3(PAL.crew));
+      hit(smX,smH+0.15,smZ,0.3,'Summit restaurant: season 5+, $40 of runs cut');
+      lamp(smX,smH,smZ,0.30);
+      emit(smX-0.05*sms,smH+0.40*sms,smZ+0.12*sms,[0.62,0.60,0.58],-0.2,0.38,0.08,2.6,0.08); // chimney smoke
+    }
+    if(dc.nightLights && activeIdx.length){ // night skiing: floodlight towers beside the first run
+      var flSlot=slots[activeIdx[0]], flt=stamp('lights',4);
+      for(var fl=0; fl<4; fl++){
+        var flR=0.44+fl*0.13, flA=flSlot.ang+0.10+flSlot.bend*Math.sin((flR-flSlot.topR)/(0.9-flSlot.topR)*Math.PI)*0.3;
+        var flX=Math.cos(flA)*flR*R, flZ=Math.sin(flA)*flR*R, flH=heightAt(flX,flZ,tg.rng2,tg.ridgeA), fls=popScale(flt[fl],now);
+        pushFloodlight(landmarks,windows,flX,flH,flZ,flA+Math.PI*0.5,0.70*fls);
+        if(fl===1) hit(flX,flH+0.25,flZ,0.25,'Night skiing: floodlights, season 6+, $30 of lodging');
+        lamp(flX-Math.sin(flA)*0.12,flH,flZ+Math.cos(flA)*0.12,0.22,[0.10,0.16,0.20]);
+      }
+    }
     // ---- choices that previously left no mark on the mountain (added 2026-09-15) ----
     // Marketing: billboards along the right-hand rim road, one per $4 of cumulative spend (max 6)
     var bbt = stamp('bb', dc.billboards);
@@ -2672,7 +2753,7 @@ const MountainGL = (() => {
       }
     }
     if(duskNow){ lamp(R*0.62+0.3,heightAt(R*0.62,-R*0.59,tg.rng2,tg.ridgeA),-R*0.59+0.2,0.4,[0.08,0.20,0.24]); // spa: cool pool light
-      if(state.built.events>0) lamp(R*0.77-0.1,heightAt(R*0.77,-R*0.19,tg.rng2,tg.ridgeA),-R*0.19-0.2,0.4); }
+      if(state.built.events>0) lamp(R*0.822-0.1,heightAt(R*0.822,-R*0.254,tg.rng2,tg.ridgeA),-R*0.254-0.2,0.4); }
     return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),gondolas:toBuf(gondolas),skirt:toBuf(skirt),
       crew:toBuf(crew),guns:toBuf(guns),flags:toBuf(flags),gate:toBuf(gate),stage:toBuf(stage),
       cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons),glowDiscs:toBuf(glowDiscs),
@@ -2886,6 +2967,7 @@ const MountainGL = (() => {
       runsDrawn: dcSelf.runs, towersDrawn: dcSelf.towers,
       crewDrawn: dcSelf.crew, closedRuns: dcSelf.closed, villageDrawn: dcSelf.village,
       billboardsDrawn: dcSelf.billboards, ghostsDrawn: dcSelf.ghosts,
+      summitLodge: !!dcSelf.summitLodge, nightLights: !!dcSelf.nightLights,
       treesDrawn: cache.trees.placed,
       drawCalls: drawCalls, fps: fpsCounter.value,
       summitFrac: Math.round(projFrac(vp,cache.tg.summit)*1000)/1000,
@@ -2950,6 +3032,7 @@ const MountainGL = (() => {
     return { runsDrawn:lastCounts.runsDrawn||0, towersDrawn:lastCounts.towersDrawn||0, crewDrawn:lastCounts.crewDrawn||0,
       closedRuns:lastCounts.closedRuns||0, villageDrawn:lastCounts.villageDrawn||0,
       billboardsDrawn:lastCounts.billboardsDrawn||0, ghostsDrawn:lastCounts.ghostsDrawn||0, treesDrawn:Math.round(lastCounts.treesDrawn||0),
+      summitLodge:!!lastCounts.summitLodge, nightLights:!!lastCounts.nightLights,
       drawCalls:lastCounts.drawCalls||0, fps:fpsCounter.value, summitFrac:lastCounts.summitFrac||0, rimFrac:lastCounts.rimFrac||0,
       shadows:QUALITY.shadows&&!!shadowFbo, depthTex:hasDepthTex, shadowRendered:shadowKey!=null, glError:gl?gl.getError():-1 };
   }
