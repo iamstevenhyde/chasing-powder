@@ -343,6 +343,7 @@
     <h2 id="waitTitle">You are in</h2>
     <p id="waitText">Waiting for the instructor to open season 1. Keep this tab open; the board appears on its own.</p>
     <div id="waitList"></div>
+    <p style="margin-top:14px;font-size:12px;color:var(--dim);">Wrong game? <a href="#" id="leaveGameLink" style="color:var(--teal);">Join a different game</a></p>
   </div>
 </div>
 
@@ -974,7 +975,7 @@ async function claimLowestSeat(name){
       .insert({ game_id: JOIN_GAME.id, seat_index: seat, name, is_ai: false, state: null }).select().single();
     if (!error) {
       ME = data; MY_SEAT = data.seat_index; GAME = JOIN_GAME;
-      try { localStorage.setItem(JOIN_KEY, JSON.stringify({ gameId: GAME.id, teamId: ME.id, token: ME.join_token, code: GAME.join_code })); } catch (e) {}
+      try { localStorage.setItem(JOIN_KEY, JSON.stringify({ at: Date.now(),  gameId: GAME.id, teamId: ME.id, token: ME.join_token, code: GAME.join_code })); } catch (e) {}
       await logDecision('team_joined', { seat_index: MY_SEAT, name }, 0);
       return enterGame();
     }
@@ -994,15 +995,19 @@ async function tryRejoin(){
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(JOIN_KEY) || 'null'); } catch (e) {}
   if (!saved || !saved.teamId) return false;
+  if (!saved.at || Date.now() - saved.at > 12 * 3600 * 1000) return false; // a game lasts one class; older joins are stale
+  const urlCode = (new URLSearchParams(location.search).get('code') || '').toUpperCase();
+  if (urlCode && saved.code && urlCode !== String(saved.code).toUpperCase()) return false; // a link to a NEW game wins
   const { data: t } = await supa.from('powder_teams').select('*').eq('id', saved.teamId).eq('join_token', saved.token).limit(1);
   if (!t || !t.length) return false;
   const { data: g } = await supa.from('powder_games').select('*').eq('id', saved.gameId).limit(1);
-  if (!g || !g.length || g[0].status === 'done' && g[0].phase !== 'ended') return false;
+  if (!g || !g.length || g[0].status === 'done' || g[0].phase === 'ended') return false; // a finished game is never rejoined
   ME = t[0]; MY_SEAT = ME.seat_index; GAME = g[0];
   return true;
 }
 
 function forgetJoin(){ try { localStorage.removeItem(JOIN_KEY); } catch (e) {} }
+document.getElementById('leaveGameLink').addEventListener('click', (e) => { e.preventDefault(); forgetJoin(); location.href = location.pathname; });
 
 // ==========================================================================
 // ---- game loop: subscribe, poll, apply ----
@@ -3160,7 +3165,7 @@ function showEnd(){
   note('Six seasons done. The debrief is on the projector.');
   showOverlay('endOverlay');
 }
-document.getElementById('endClose').addEventListener('click', ()=>{ endOverlayDismissed = true; document.getElementById('endOverlay').classList.add('hidden'); });
+document.getElementById('endClose').addEventListener('click', ()=>{ endOverlayDismissed = true; forgetJoin(); document.getElementById('endOverlay').classList.add('hidden'); });
 
 // ==========================================================================
 // ---- dev-only mountain demo hook (?mtnDemo=bare|s1|s3|maxed): headless screenshots and
