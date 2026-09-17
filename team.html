@@ -920,6 +920,9 @@ let ME = null;              // my powder_teams row
 let MY_SEAT = null;
 let SUBMITTED_SEASON = -1;  // last season I have a season_submitted row for
 let LAST_APPLIED_SEASON = -1;
+// Seasons resolved so far. GAME.season stops at 5 when the game ends (phase 'ended'), but the sixth
+// season did resolve: without this the last season never narrated or revealed on the mountain.
+function effSeason(){ return GAME.season + (GAME.phase === 'ended' ? 1 : 0); }
 let endOverlayDismissed = false; // once the student closes the debrief, syncGame's poll must not force it back open
 let stageGuess = null;
 let PHASE_SEQ = 0;          // monotonic guard so a slow render never paints a stale phase (ranch pattern)
@@ -1033,7 +1036,7 @@ async function syncGame(){
   if (GAME.phase === 'lobby') return showLobbyWait();
   if (!ME.state) return showLobbyWait('The instructor is dealing seats. One moment.');
 
-  const changedSeason = GAME.season !== LAST_APPLIED_SEASON;
+  const changedSeason = effSeason() !== LAST_APPLIED_SEASON;
   buildMirror();
   if (changedSeason) await onNewSeason();
   if (GAME.phase === 'ended') { if (!endOverlayDismissed) showEnd(); return; }
@@ -1076,7 +1079,7 @@ function buildMirror(){
 
 async function onNewSeason(){
   const p = engineState.resorts[engineState.playerIdx];
-  const s = GAME.season;
+  const s = effSeason();
   let didResolve = false;
   if (LAST_APPLIED_SEASON >= 0 && s > LAST_APPLIED_SEASON) {
     // a season just resolved: draw the realized arrow from where we were to where we landed
@@ -1608,10 +1611,10 @@ function mtnPreviewState(){
   const staffNow = p.staff + pendingHireCrew; // arrives this season; a hire chosen now arrives next season
   const req = previewCap * CONFIG.STAFF_PER_CAP * (previewLodge ? CONFIG.LODGE_STAFF_MULT : 1);
   const util = Math.min(1, staffNow / Math.max(1, req));
-  const s = Math.max(0, engineState.s - 1); // GAME.world.snowTrace of the last RESOLVED season
+  const s = Math.max(0, effSeason() - 1); // GAME.world.snowTrace of the last RESOLVED season
   const snow = (GAME.world.snowTrace || [])[s] || 'normal';
   return {
-    seed: GAME.world.seed, seat: MY_SEAT, season: engineState.s, snow,
+    seed: GAME.world.seed, seat: MY_SEAT, season: effSeason(), snow,
     name: (typeof ME !== 'undefined' && ME && ME.name) ? ME.name : '', // on the entrance sign and ticket board
     cap: previewCap, staff: staffNow, _util: util, _reachHi: p._reachHi == null ? 0.75 : p._reachHi,
     lodgeBuilt: previewLodge,
