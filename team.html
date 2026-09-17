@@ -1631,7 +1631,7 @@ const MountainGL = (() => {
     'float fog=clamp(farFog+baseFog,0.0,0.80);gl_FragColor=vec4(mix(lit,uFogCol,fog),1.0);}';  var PVS='attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=2.5;}';
   var PFS='precision mediump float;void main(){gl_FragColor=vec4(0.95,0.97,1.0,0.85);}';
   var UVS='attribute vec3 aPos;attribute vec3 aCol;uniform mat4 uMVP;varying vec3 vC;void main(){vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=7.0;}';
-  var UFS='precision mediump float;varying vec3 vC;void main(){gl_FragColor=vec4(vC,1.0);}';
+  var UFS='precision mediump float;varying vec3 vC;uniform float uGain;void main(){gl_FragColor=vec4(vC*uGain,1.0);}';
   var SVS='attribute vec2 aPos;varying vec2 vP;void main(){vP=aPos;gl_Position=vec4(aPos,0.9999,1.0);}';
   // Sky: a cream-to-sand gradient with a soft sun glow, a haze band at the horizon (NDC y=0, the
   // camera looks level) and, below it, the fog-washed water tone the water disc fades into.
@@ -1873,6 +1873,7 @@ const MountainGL = (() => {
             // groomed piste: a cool bright fill with a dark ink edge (the trail-map look of the sheets)
             var edge=Math.max(0,Math.min(1,(lateral-(half-0.042))/0.042));
             var fill=closedSet[si]?[0.57,0.61,0.62]:lerp3(runCol,[0.90,0.94,1.0],0.35);
+            if(state.snow==='drought') fill=lerp3(fill,[0.86,0.78,0.62],0.42); // thin cover: sand shows through the groomed lanes
             base=lerp3(fill,runEdge,edge*0.82);
           }
         }
@@ -2371,7 +2372,10 @@ const MountainGL = (() => {
     // Active slots are camera-prioritized so early builds read clearly from the default view.
     var activeIdx=activeRunIndices(state,slots);
     var towers=newArr(), lodge=newArr(), village=newArr(), crew=newArr(), guns=newArr(), flags=newArr(), gate=newArr(), stage=newArr(), landmarks=newArr(), gondolas=newArr(), skirt=newArr();
-    var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr();
+    var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr(), glowDiscs=newArr();
+    // lamplight pools (drawn additively at dusk only; harmless otherwise): warm amber under lodgings
+    var duskNow=((state.season||0)>=4 && (state.built.lodging||0)>=18);
+    function lamp(x,y,z,r,c){ if(duskNow) pushFlatOval(glowDiscs,x,y+0.02,z,r,r*0.8,14,c||[0.26,0.16,0.05]); }
     var LODGE_H = 0.66, towerH = LODGE_H*0.8, baseR = 0.74;
     var lodgeX = R*0.80, lodgeZ = 0; // reference point for banner/gate/stage even if the lodge box itself isn't built yet
     hits=[];
@@ -2399,6 +2403,7 @@ const MountainGL = (() => {
       var lt = stamp('lodge',1), sc=popScale(lt[0],now);
       pushAFrameLodge(lodge,windows,lx,lh,lz,0.92*sc);
       hit(lx,lh+0.35,lz,0.55,'Base lodge: Lodging built (comfort gate open)');
+      lamp(lx+0.45,lh,lz,0.55,[0.30,0.19,0.06]);
       pushSnowmobile(lodge,lx+0.42*sc,lh,lz-0.36*sc,0.18,0.58*sc);
       if(PROPS.rental_shack){
         pushMesh(lodge,windows,'rental_shack',lx-0.05*sc,heightAt(lx-0.05*sc,lz-0.62*sc,tg.rng2,tg.ridgeA),lz-0.62*sc,0.35,0.85*sc);
@@ -2421,6 +2426,7 @@ const MountainGL = (() => {
         if(PROPS[vKind]) pushMesh(village,windows,vKind,vx,vh,vz,vAng+(vAng<0?0.9:-0.9),(vKind==='aframe_lodge'?0.50:0.72)*vs);
         else pushResortHouse(village,windows,vx,vh,vz,(0.34+(i2%3)*0.045)*vs,roofTone,2);
         hit(vx,vh+0.15,vz,0.25,'Village lodging: one building per $4 of cumulative Lodging spend');
+        lamp(vx+Math.cos(vAng)*0.18,vh,vz+Math.sin(vAng)*0.18,0.28);
       }
       if((state.built.lodging||0)>=18) pushSpa(village,windows,tg);
     }
@@ -2462,7 +2468,7 @@ const MountainGL = (() => {
       hit(mx,mBase+0.15,mz,0.16,(closedSet[mi]?'CLOSED run (understaffed): ':'Run: ')+(slotM.diff===0?'green (beginner)':(slotM.diff===1?'blue (intermediate)':'black (expert)')));
     }
     if(dc.chutes){ // chutes: real ribbon gullies, on the camera-facing side, same builder as runs
-      var chuteCol=[0.06,0.06,0.07];
+      var chuteCol=[0.19,0.21,0.25]; // dark slate gullies (pure black read as a smear on laptops)
       for(var cu=0;cu<3;cu++) buildRibbonPath(ribbons,tg, 0.3+(cu-1)*0.16, 0,0, 0.03,0.4, 0.12, chuteCol,chuteCol, 1);
     }
     var bt = stamp('bar',nClosed);
@@ -2553,9 +2559,11 @@ const MountainGL = (() => {
         if(srow===0&&scol===1) hit(oX,oH+0.1,oZ,0.3,'Solar array: Cost Redesign bet');
       }
     }
+    if(duskNow){ lamp(R*0.62+0.3,heightAt(R*0.62,-R*0.59,tg.rng2,tg.ridgeA),-R*0.59+0.2,0.4,[0.08,0.20,0.24]); // spa: cool pool light
+      if(state.built.events>0) lamp(R*0.77-0.1,heightAt(R*0.77,-R*0.19,tg.rng2,tg.ridgeA),-R*0.19-0.2,0.4); }
     return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),gondolas:toBuf(gondolas),skirt:toBuf(skirt),
       crew:toBuf(crew),guns:toBuf(guns),flags:toBuf(flags),gate:toBuf(gate),stage:toBuf(stage),
-      cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons)};
+      cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons),glowDiscs:toBuf(glowDiscs)};
   }
 
   // ---------- GL buffer helpers ----------
@@ -2576,9 +2584,10 @@ const MountainGL = (() => {
     gl.drawArrays(gl.TRIANGLES,0,buf.count);
     drawCalls++;
   }
-  function drawUnlit(buf,mvp,mode){
+  function drawUnlit(buf,mvp,mode,gain){
     if(!buf || buf.count===0) return;
     gl.useProgram(UPROG); resetAttribs();
+    gl.uniform1f(gl.getUniformLocation(UPROG,'uGain'), gain||1.0);
     var pb=mkBuf(buf.pos), cb=mkBuf(buf.col);
     var aP=gl.getAttribLocation(UPROG,'aPos'), aC=gl.getAttribLocation(UPROG,'aCol');
     gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
@@ -2669,7 +2678,10 @@ const MountainGL = (() => {
     var sunDir = SUN_DIR;
     var skyTop = state.snow==='powder'?[0.64,0.65,0.68]:c3(PAL.skyTop);
     var skyHor = state.snow==='drought'?[0.86,0.74,0.56]:(state.snow==='powder'?[0.84,0.84,0.84]:c3(PAL.skyHor));
-    var fogCol = skyHor, fogStart = state.snow==='drought'?4.0:11.0, fogRange = state.snow==='drought'?14.0:30.0;
+    var fogCol = skyHor, fogStart = state.snow==='drought'?4.0:(state.snow==='powder'?6.0:11.0), fogRange = state.snow==='drought'?14.0:(state.snow==='powder'?18.0:30.0);
+    // dusk at the base for a mature resort (season 4+, lodging spend 18+): the sky stays cream,
+    // the sun eases off a little and the base lights up (glow discs and brighter windows)
+    var dusk = ((state.season||0)>=4 && (state.built.lodging||0)>=18) ? 1 : 0;
     gl.disable(gl.DEPTH_TEST);
     gl.useProgram(SPROG); resetAttribs();
     var sunPt=[sunDir[0]*100,sunDir[1]*100,sunDir[2]*100], sf=projFrac(vp,sunPt);
@@ -2688,7 +2700,7 @@ const MountainGL = (() => {
     drawUnlit(waterBuf,mvp);
     gl.useProgram(PROG); resetAttribs();
     gl.uniform3fv(gl.getUniformLocation(PROG,'uSunDir'), sunDir);
-    gl.uniform3fv(gl.getUniformLocation(PROG,'uSunCol'), [1,0.94,0.84]);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uSunCol'), dusk?[0.90,0.80,0.70]:[1,0.94,0.84]);
     gl.uniform3fv(gl.getUniformLocation(PROG,'uSkyCol'), state.snow==='drought'?[0.80,0.76,0.70]:[0.70,0.76,0.88]);
     gl.uniform3fv(gl.getUniformLocation(PROG,'uGndCol'), [0.46,0.40,0.32]);
     gl.uniform3fv(gl.getUniformLocation(PROG,'uFogCol'), fogCol);
@@ -2721,7 +2733,12 @@ const MountainGL = (() => {
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-1,-1);
     drawBatch(dp.ribbons,mvp,model);
     gl.disable(gl.POLYGON_OFFSET_FILL);
-    drawUnlit(dp.windows,mvp);
+    drawUnlit(dp.windows,mvp,null,dusk?1.4:1.0);
+    if(dusk && dp.glowDiscs && dp.glowDiscs.count){ // additive pools of lamplight on the snow around the base
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE); gl.depthMask(false);
+      drawUnlit(dp.glowDiscs,mvp);
+      gl.depthMask(true); gl.disable(gl.BLEND);
+    }
     if(state.snow==='powder'){
       for(var i=0;i<snowN;i++){ snowFlakes[i*3+1]-=dt*0.6; if(snowFlakes[i*3+1]<0) snowFlakes[i*3+1]=3.5; }
       gl.useProgram(PPROG); resetAttribs();
