@@ -182,7 +182,10 @@
     text-align:center;pointer-events:none;display:none;}
   #mtnLegendBox{position:absolute;bottom:140px;left:14px;font-size:11px;color:var(--dim);
     background:rgba(10,24,29,.92);border:1px solid var(--line);border-radius:8px;
-    padding:8px 11px;line-height:1.55;max-width:220px;pointer-events:none;display:none;}
+    padding:8px 11px;line-height:1.55;max-width:250px;pointer-events:none;display:none;}
+  #mtnLegendBox .lgTitle{font-family:var(--font-mono);color:var(--teal);text-transform:uppercase;letter-spacing:.12em;font-size:10px;margin-bottom:4px;}
+  #mtnLegendBox .lgRow{display:flex;align-items:baseline;gap:6px;}
+  #mtnLegendBox .lgMark{flex:0 0 16px;text-align:center;}
   #reportLine,#logStrip,#legendBox{background:rgba(10,24,29,.90);}
   #boardWrap{background:radial-gradient(ellipse at 50% 38%,#18313a 0%,#081116 74%,#050b0e 100%);}
   #stepDots{flex:0 0 auto;display:flex;justify-content:space-between;padding:12px 14px 0;}
@@ -203,6 +206,8 @@
   #readLogStrip{font-family:var(--font-mono);font-size:11.5px;max-height:240px;overflow-y:auto;}
   #readReportLine b{color:var(--gold);}
 .lever .t .lico{width:30px;height:30px;vertical-align:middle;margin:-6px 6px -4px 0;image-rendering:auto}
+#mtnTip{position:absolute;display:none;pointer-events:none;z-index:6;font-size:12px;line-height:1.35;color:var(--text);background:rgba(10,24,29,.94);border:1px solid var(--gold);border-radius:6px;padding:4px 9px;max-width:250px;transform:translate(-50%,-115%)}
+#mtnKeyBtn.off{opacity:.55}
 </style>
 </head>
 <body>
@@ -228,7 +233,9 @@
       <button id="viewMarketBtn" class="on">Market</button>
       <button id="viewMountainBtn">Mountain</button>
       <button id="mtnSpinBtn" type="button" hidden>Pause spin</button>
+      <button id="mtnKeyBtn" type="button" hidden aria-pressed="true">Key</button>
     </div>    <div id="mtnCaption"></div>
+    <div id="mtnTip"></div>
     <div id="reportLine"></div>
     <div id="logStrip"></div>
     <div id="segPopup"></div>
@@ -242,15 +249,17 @@
       <div class="lgRow"><span class="lgMark">&#9711;</span> Faded sphere = track-out decay</div>
     </div>
     <div id="mtnLegendBox">
-      <div class="lgTitle">Reading the mountain</div>
-      <div class="lgRow"><span class="lgMark" style="color:var(--text)">&#9615;</span> Pale stripe = a cut run</div>
-      <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9642;</span> Tower = +4 capacity above 100 (a second lift past 7)</div>
+      <div class="lgTitle">Reading the mountain <span style="font-weight:400;color:var(--dim)">(hover anything)</span></div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--text)">&#9615;</span> Groomed stripe = a cut run; sign colour = green / blue / black</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9642;</span> Lift tower = +4 capacity above 100 (a second lift past 7)</div>
       <div class="lgRow"><span class="lgMark" style="color:#ff8f1f">&#9644;</span> Billboard at the rim = $4 of marketing</div>
-      <div class="lgRow"><span class="lgMark" style="color:#ffd84d">#</span> Ticket board by the lodge = your day-pass price</div>
-      <div class="lgRow"><span class="lgMark" style="color:#3a5a9a">&#9641;</span> Solar panels = Cost Redesign owned</div>
-      <div class="lgRow"><span class="lgMark" style="color:#ff8f1f">&#9679;</span> Orange peg = crew on the hill (pale peg = hired, arrives next season)</div>
-      <div class="lgRow"><span class="lgMark" style="color:var(--danger)">&#10005;</span> Red flag = a run closed, understaffed</div>
-      <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9650;</span> Dark notch at the summit = expert chutes open</div>
+      <div class="lgRow"><span class="lgMark" style="color:#c9a36b">&#8962;</span> A-frames and cabins = lodging; spa at $18</div>
+      <div class="lgRow"><span class="lgMark" style="color:#72b8bd">&#9707;</span> Food trucks and tubing = summer events</div>
+      <div class="lgRow"><span class="lgMark" style="color:#ffd84d">#</span> Ticket board = your day-pass price</div>
+      <div class="lgRow"><span class="lgMark" style="color:#b9b9b9">&#9673;</span> Fan guns = Snowmaking bet; tram = Megapass; solar = Cost Redesign</div>
+      <div class="lgRow"><span class="lgMark" style="color:#ff8f1f">&#9679;</span> Orange peg = crew (pale peg = hired, arrives next season)</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--danger)">&#10005;</span> Red bar = a run closed, understaffed</div>
+      <div class="lgRow"><span class="lgMark" style="color:var(--dim)">&#9650;</span> Helipad and patrol base = expert chutes open</div>
     </div>
     <div id="dossierBox" style="display:none;position:absolute;top:56px;right:14px;width:260px;
       font-size:11.5px;color:var(--text);background:rgba(28,25,21,.92);border:1px solid var(--line);
@@ -1370,6 +1379,8 @@ function setBoardView(v){
   document.getElementById('legendBox').style.display = v === 'mountain' ? 'none' : '';
   document.getElementById('mtnLegendBox').style.display = v === 'mountain' ? '' : 'none';
   document.getElementById('mtnSpinBtn').hidden = v !== 'mountain';
+  document.getElementById('mtnKeyBtn').hidden = v !== 'mountain';
+  document.getElementById('mtnLegendBox').style.display = (v === 'mountain' && mtnKeyOn) ? 'block' : 'none';
   const glCanvas = document.getElementById('mtnGL');
   glCanvas.style.display = v === 'mountain' ? 'block' : 'none'; // '' would just fall back to the
   // #mtnGL{display:none} stylesheet rule and never actually show the canvas
@@ -1380,6 +1391,28 @@ document.getElementById('viewMountainBtn').addEventListener('click', ()=>setBoar
 
 const mountainCanvas = document.getElementById('mtnGL');
 const mtnSpinBtn = document.getElementById('mtnSpinBtn');
+// Key toggle (the legend box) and hover labels. The legend defaults on, off in ?mtnDemo shots.
+let mtnKeyOn = !new URLSearchParams(location.search).get('mtnDemo');
+const mtnKeyBtn = document.getElementById('mtnKeyBtn');
+mtnKeyBtn.classList.toggle('off', !mtnKeyOn);
+mtnKeyBtn.addEventListener('click', () => {
+  mtnKeyOn = !mtnKeyOn;
+  mtnKeyBtn.classList.toggle('off', !mtnKeyOn); mtnKeyBtn.setAttribute('aria-pressed', String(mtnKeyOn));
+  document.getElementById('mtnLegendBox').style.display = mtnKeyOn ? 'block' : 'none';
+});
+const mtnTip = document.getElementById('mtnTip');
+function hideMtnTip(){ mtnTip.style.display = 'none'; }
+mountainCanvas.addEventListener('mousemove', e => {
+  if (mtnDragging || !MountainGL.__inited) { hideMtnTip(); return; }
+  const r = mountainCanvas.getBoundingClientRect();
+  const h = MountainGL.hitTest(e.clientX - r.left, e.clientY - r.top);
+  if (!h) { hideMtnTip(); return; }
+  mtnTip.textContent = h.label;
+  mtnTip.style.left = (mountainCanvas.offsetLeft + h.x) + 'px';
+  mtnTip.style.top = (mountainCanvas.offsetTop + h.y) + 'px';
+  mtnTip.style.display = 'block';
+});
+mountainCanvas.addEventListener('mouseleave', hideMtnTip);
 let mtnSpinEnabled = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let mtnHeldYaw = 0.3, mtnDragging = false, mtnDragX = 0;
 
@@ -2058,6 +2091,7 @@ const MountainGL = (() => {
     var x=Math.cos(ang)*rr*R,z=Math.sin(ang)*rr*R,y=heightAt(x,z,tg.rng2,tg.ridgeA);
     // the bullwheel faces outward (down the lift line) at the base, inward at the top station
     var face=rr>0.6?ang:ang+Math.PI;
+    hit(x,y+0.3*scale,z,0.45*scale,kind==='tram'?(rr>0.6?'Tram base station (Megapass bet)':'Tram summit station'):(rr>0.6?'Chairlift base: each tower past it is +4 capacity':'Chairlift top station'));
     if(kind==='tram'&&PROPS.tram_terminal){ pushMesh(body,lights,'tram_terminal',x,y,z,face,scale*0.9); return; }
     if(PROPS.chair_terminal){ pushMesh(body,lights,'chair_terminal',x,y,z,face,scale*1.0); return; }
     var steel=c3(PAL.liftSteel),roof=[0.20,0.26,0.27],snow=c3(PAL.snowLit);
@@ -2157,6 +2191,7 @@ const MountainGL = (() => {
   }
   function pushSnowmakingHub(body,glow,tg){
     var ang=0.57,rr=0.88,x=Math.cos(ang)*rr*R,z=Math.sin(ang)*rr*R,y=heightAt(x,z,tg.rng2,tg.ridgeA);
+    hit(x,y+0.15,z,0.35,'Snowmaking pump house');
     if(PROPS.pump_house){ pushMesh(body,glow,'pump_house',x,y,z,ang+Math.PI,0.9); }
     else {
       pushBox(body,x,y+0.12,z,0.26,0.12,0.20,[0.33,0.37,0.36]);
@@ -2171,6 +2206,7 @@ const MountainGL = (() => {
   function pushEventVillage(body,glow,tg,scale){
     var bx=R*0.77,bz=-R*0.19,by=heightAt(bx,bz,tg.rng2,tg.ridgeA),cols=[[0.72,0.16,0.10],[0.16,0.36,0.58],[0.25,0.50,0.30]];
     if(PROPS.tubing_lane) pushMesh(body,glow,'tubing_lane',bx+0.10,heightAt(bx+0.10,bz-0.62,tg.rng2,tg.ridgeA),bz-0.62,-0.35,scale*0.9);
+    hit(bx-0.1,by+0.15,bz-0.2,0.45,'Event village: Summer Events spend (drought hedge)');
     for(var i=0;i<2;i++){
       var x=bx-0.22*i,z=bz-0.24*i,y=heightAt(x,z,tg.rng2,tg.ridgeA),c=cols[i];
       if(PROPS.food_truck){ pushMesh(body,glow,'food_truck',x,y,z,-0.2+i*0.25,scale*0.9,i?{body:[0.22,0.52,0.58],red:[0.22,0.52,0.58]}:null); continue; }
@@ -2184,6 +2220,7 @@ const MountainGL = (() => {
   }
   function pushSpa(body,glow,tg){
     var x=R*0.62,z=-R*0.59,y=heightAt(x,z,tg.rng2,tg.ridgeA);
+    hit(x,y+0.2,z,0.45,'Spa: Lodging spend reached $18');
     if(PROPS.spa){ pushMesh(body,glow,'spa',x,y,z,Math.atan2(z,x),1.0); return; }
     pushBox(body,x,y+0.11,z,0.42,0.11,0.25,[0.46,0.34,0.25]);
     pushBox(body,x-0.18,y+0.28,z+0.03,0.26,0.10,0.22,[0.33,0.29,0.26]);
@@ -2325,6 +2362,7 @@ const MountainGL = (() => {
     var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr();
     var LODGE_H = 0.66, towerH = LODGE_H*0.8, baseR = 0.74;
     var lodgeX = R*0.80, lodgeZ = 0; // reference point for banner/gate/stage even if the lodge box itself isn't built yet
+    hits=[];
     pushTerrainSkirt(skirt,tg);
     // A legible resort base: lake, access road, arrival plaza and lift station anchor the mountain.
     var lakeX=R*0.69,lakeZ=-R*0.43,lakeY=heightAt(lakeX,lakeZ,tg.rng2,tg.ridgeA)+0.035;
@@ -2333,7 +2371,9 @@ const MountainGL = (() => {
     pushRoadArc(landmarks,tg,0.91,-0.94,0.72,0.13,[0.34,0.31,0.27]);
     var plazaY=heightAt(lodgeX,lodgeZ,tg.rng2,tg.ridgeA)+0.028;
     pushFlatOval(landmarks,lodgeX,plazaY,lodgeZ,0.68,0.52,24,[0.77,0.72,0.62]);
-    if(dc.chutes){ pushObservationDeck(landmarks,tg,0.86); pushHelipad(landmarks,windows,tg); }
+    if(dc.chutes){ pushObservationDeck(landmarks,tg,0.86); pushHelipad(landmarks,windows,tg);
+      hit(Math.cos(-0.82)*0.49*R,heightAt(Math.cos(-0.82)*0.49*R,Math.sin(-0.82)*0.49*R,tg.rng2,tg.ridgeA)+0.2,Math.sin(-0.82)*0.49*R,0.6,'Patrol base and helipad: expert chutes open');
+      hit(-0.105*R,heightAt(-0.105*R,-0.075*R,tg.rng2,tg.ridgeA)+0.2,-0.075*R,0.3,'Summit observation deck'); }
     // lift 1 runs up one flank from the lodge apron; a second lift starts on the OTHER flank once
     // the count would exceed 7 towers on a single line (a picket fence)
     var nTowers = dc.towers;
@@ -2346,6 +2386,7 @@ const MountainGL = (() => {
       var lx=lodgeX, lz=lodgeZ, lh=heightAt(lx,lz,tg.rng2,tg.ridgeA);
       var lt = stamp('lodge',1), sc=popScale(lt[0],now);
       pushAFrameLodge(lodge,windows,lx,lh,lz,0.92*sc);
+      hit(lx,lh+0.35,lz,0.55,'Base lodge: Lodging built (comfort gate open)');
       pushSnowmobile(lodge,lx+0.42*sc,lh,lz-0.36*sc,0.18,0.58*sc);
       if(PROPS.rental_shack){
         pushMesh(lodge,windows,'rental_shack',lx-0.05*sc,heightAt(lx-0.05*sc,lz-0.62*sc,tg.rng2,tg.ridgeA),lz-0.62*sc,0.35,0.85*sc);
@@ -2367,6 +2408,7 @@ const MountainGL = (() => {
         var vKind=i2%3===0?'aframe_lodge':(i2%3===1?'rental_shack':'patrol_cabin');
         if(PROPS[vKind]) pushMesh(village,windows,vKind,vx,vh,vz,vAng+(vAng<0?0.9:-0.9),(vKind==='aframe_lodge'?0.50:0.72)*vs);
         else pushResortHouse(village,windows,vx,vh,vz,(0.34+(i2%3)*0.045)*vs,roofTone,2);
+        hit(vx,vh+0.15,vz,0.25,'Village lodging: one building per $4 of cumulative Lodging spend');
       }
       if((state.built.lodging||0)>=18) pushSpa(village,windows,tg);
     }
@@ -2389,6 +2431,7 @@ const MountainGL = (() => {
       var scc = popScale(ct[gi],now);
       pushCyl(crew,cx,ch,cz,crewR,bodyH*scc,5,c3(PAL.crew));
       pushOcta(crew,cx,ch+bodyH*scc+headR*scc,cz,headR*scc,[0.55,0.28,0.06]);
+      if(within===1) hit(cx,ch+0.1,cz,0.2,'Crew on the hill: one peg per 5 staff');
     }    var nRuns2 = dc.runs, nClosed = dc.closed;
     // closed runs: first nClosed of the already camera-ordered activeIdx list (nearest angle 0.3)
     var closedSet={}; for(var ck=0;ck<nClosed;ck++) closedSet[activeIdx[ck]]=true;
@@ -2404,6 +2447,7 @@ const MountainGL = (() => {
       pushCyl(markers,mx,mBase,mz,0.012,postH,5,c3(PAL.liftSteel));
       var signCol = slotM.diff===0?[0.29,0.55,0.23]:(slotM.diff===1?[0.18,0.37,0.66]:[0.1,0.1,0.1]);
       pushPlate(markers,mx,mBase+postH+mscale*0.5,mz,slotM.ang,mscale,mscale,signCol);
+      hit(mx,mBase+0.15,mz,0.16,(closedSet[mi]?'CLOSED run (understaffed): ':'Run: ')+(slotM.diff===0?'green (beginner)':(slotM.diff===1?'blue (intermediate)':'black (expert)')));
     }
     if(dc.chutes){ // chutes: real ribbon gullies, on the camera-facing side, same builder as runs
       var chuteCol=[0.06,0.06,0.07];
@@ -2414,6 +2458,7 @@ const MountainGL = (() => {
       var bi=activeIdx[bk], angB=slots[bi].ang, rB=0.81, bsc=popScale(bt[bk],now);
       var cxB=Math.cos(angB)*rB*R, czB=Math.sin(angB)*rB*R, hB=heightAt(cxB,czB,tg.rng2,tg.ridgeA);
       pushBox(barriers,cxB,hB+0.03*bsc,czB,0.13*bsc,0.03*bsc,0.13*bsc,c3(PAL.closedBar)); // bright, solid bar: reads at distance
+      hit(cxB,hB+0.05,czB,0.18,'Closed run: not enough crew to staff it');
     }
     if(state.bets.snowmaking){
       pushSnowmakingHub(guns,windows,tg);
@@ -2423,6 +2468,7 @@ const MountainGL = (() => {
         var a3=gunSlot.ang+(i3%2?0.025:-0.025),r3b=0.52+(i3%3)*0.13;
         var gx=Math.cos(a3)*r3b*R,gz=Math.sin(a3)*r3b*R,gh=heightAt(gx,gz,tg.rng2,tg.ridgeA),gs=popScale(gt[i3],now);
         pushSnowGun(guns,gx,gh,gz,a3,0.52*gs);
+        hit(gx,gh+0.12,gz,0.2,'Fan gun: Snowmaking bet (drought insurance)');
       }
     }
     if(state.bets.megapass){
@@ -2452,6 +2498,7 @@ const MountainGL = (() => {
       pushCyl(gate,bX+btx*0.09,bH,bZ+btz*0.09,0.012,0.2*bs,5,c3(PAL.liftSteel));
       pushPlate(gate,bX,bH+0.26*bs,bZ,bA,0.3*bs,0.14*bs,[1,1,1]);
       pushPlate(gate,bX+Math.cos(bA)*0.004,bH+0.26*bs,bZ+Math.sin(bA)*0.004,bA,0.26*bs,0.1*bs, bb%2?[0.18,0.37,0.66]:c3(PAL.crew));
+      hit(bX,bH+0.26,bZ,0.2,'Billboard: $4 of cumulative Marketing');
     }
     // Hire: pale ghost figures lined up at the lodge door for crew hired this season (they start next season)
     var ght = stamp('ghost', dc.ghosts);
@@ -2461,6 +2508,7 @@ const MountainGL = (() => {
       var gH=heightAt(gX,gZ,tg.rng2,tg.ridgeA),gsc=popScale(ght[gh2],now);
       pushCyl(crew,gX,gH,gZ,crewR,bodyH*gsc,5,[0.86,0.9,0.97]);
       pushOcta(crew,gX,gH+bodyH*gsc+headR*gsc,gZ,headR*gsc,[0.72,0.78,0.88]);
+      if(gh2===0) hit(gX+0.1,gH+0.1,gZ,0.25,'Hired this season: pale crew start next season');
     }    // Day-pass price: a ticket board by the lodge whose two digits read the day-pass slider (0-99).
     // Only once something is built, so a bare mountain stays bare.
     if(dc.runs>0 || state.lodgeBuilt){
@@ -2469,6 +2517,7 @@ const MountainGL = (() => {
       pushCyl(flags,tX-ttx*0.16,tH,tZ-ttz*0.16,0.014,0.26,5,c3(PAL.liftSteel));
       pushCyl(flags,tX+ttx*0.16,tH,tZ+ttz*0.16,0.014,0.26,5,c3(PAL.liftSteel));
       pushPlate(flags,tX,tc,tZ,tA,0.42,0.24,[0.1,0.11,0.13]);
+      hit(tX,tc,tZ,0.25,'Ticket board: your day-pass price');
       pushPlate(flags,tX+tnx*0.003,tc+0.1,tZ+tnz*0.003,tA,0.42,0.04,c3(PAL.lodgeRoof));
       var pv=Math.max(0,Math.min(99,Math.round((state.dayPrice==null?0.5:state.dayPrice)*100)));
       var SEG=['abcdef','bc','abged','abgcd','fgbc','afgcd','afgedc','abc','abcdefg','abcdfg'];
@@ -2489,6 +2538,7 @@ const MountainGL = (() => {
         var oA=-0.55-scol*0.07, oR=(0.93+srow*0.035)*R, oX=Math.cos(oA)*oR, oZ=Math.sin(oA)*oR, oH=heightAt(oX,oZ,tg.rng2,tg.ridgeA);
         pushCyl(stage,oX,oH,oZ,0.01,0.07*sos,4,c3(PAL.liftSteel));
         pushPanel(stage,oX,oH+0.1*sos,oZ,oA,0.16*sos,0.1*sos,1.0,[0.13,0.22,0.42]);
+        if(srow===0&&scol===1) hit(oX,oH+0.1,oZ,0.3,'Solar array: Cost Redesign bet');
       }
     }
     return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),gondolas:toBuf(gondolas),skirt:toBuf(skirt),
@@ -2535,6 +2585,10 @@ const MountainGL = (() => {
   // dynamic props (everything but the moving chairs) are cached: rebuilt only when the state
   // signature changes, or for 650ms after a change while pop-in tweens are still animating
   var propsCache=null, propsKey=null, lastChairsBuf=null, lastSkiersBuf=null;
+  // hover labels: every placed prop family records a world-space hit sphere; hitTest() projects
+  // them with the last frame's view-projection (no GPU picking)
+  var hits=[], lastVP=null;
+  function hit(x,y,z,r,label){ hits.push({x:x,y:y,z:z,r:r,label:label}); }
   var state = null; // set via setState(); replaces the prototype's global STATE
   function stateSig(s){ return [s.seed,s.seat,s.snow,s.cap,s.staff,s._util,s._reachHi,s.lodgeBuilt,
     s.built.runs,s.built.lodging,s.built.events,s.bets.snowmaking,s.bets.megapass,s.bets.exclusivity,s.bets.valuesBrand,
@@ -2597,7 +2651,7 @@ const MountainGL = (() => {
     var view = m4LookAt(eye,[0,tgtY,0],[0,1,0]);
     var horizonNdc = Math.tan(Math.atan2(eyeH-tgtY,eyeDist))/Math.tan(0.425);
     var proj = m4Persp(0.85, glCanvas.width/glCanvas.height, 0.1, 50);
-    var vp = m4Mul(proj,view);
+    var vp = m4Mul(proj,view); lastVP = vp;
     var model = m4Id(), mvp = m4Mul(vp,model);
     // Low golden key from the camera side (the mountain turns under a fixed sun); cool sky fill.
     var sunDir = SUN_DIR;
@@ -2738,7 +2792,20 @@ const MountainGL = (() => {
   }
   window.fpsCounter = fpsCounter; // compatibility: powder/_tools/fps-probe.mjs reads window.fpsCounter.value
   function quality(){ return QUALITY; }
-  return { init, setState, setYaw, getYaw, render, selfTest, quality };
+  // (px,py) in CSS pixels on the canvas -> nearest labelled prop within 14 px (plus its screen radius)
+  function hitTest(px,py){
+    if(!lastVP || !glCanvas) return null;
+    var cw=glCanvas.clientWidth, ch=glCanvas.clientHeight, best=null, bestD=1e9, vp=lastVP;
+    for(var i=0;i<hits.length;i++){ var h=hits[i];
+      var cx=vp[0]*h.x+vp[4]*h.y+vp[8]*h.z+vp[12], cy=vp[1]*h.x+vp[5]*h.y+vp[9]*h.z+vp[13], cw4=vp[3]*h.x+vp[7]*h.y+vp[11]*h.z+vp[15];
+      if(cw4<=0) continue;
+      var sx=(cx/cw4*0.5+0.5)*cw, sy=(1-(cy/cw4*0.5+0.5))*ch, rad=h.r/cw4*cw*0.6;
+      var d=Math.hypot(sx-px,sy-py)-rad;
+      if(d<bestD && d<14){ bestD=d; best={label:h.label,x:sx,y:sy}; }
+    }
+    return best;
+  }
+  return { init, setState, setYaw, getYaw, render, selfTest, quality, hitTest };
 })();
 window.__selfTest = () => MountainGL.selfTest();
 // Mountain-view frame driver, called from loop() exactly like the old diorama's renderMountain():
