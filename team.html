@@ -233,7 +233,7 @@
       <button id="viewMarketBtn" class="on">Market</button>
       <button id="viewMountainBtn">Mountain</button>
       <button id="mtnSpinBtn" type="button" hidden>Pause spin</button>
-      <button id="mtnKeyBtn" type="button" hidden aria-pressed="true">Key</button>
+      <button id="mtnKeyBtn" type="button" hidden aria-pressed="false" class="off">Key</button>
     </div>    <div id="mtnCaption"></div>
     <div id="mtnTip"></div>
     <div id="reportLine"></div>
@@ -1395,7 +1395,7 @@ document.getElementById('viewMountainBtn').addEventListener('click', ()=>setBoar
 const mountainCanvas = document.getElementById('mtnGL');
 const mtnSpinBtn = document.getElementById('mtnSpinBtn');
 // Key toggle (the legend box) and hover labels. The legend defaults on, off in ?mtnDemo shots.
-let mtnKeyOn = !new URLSearchParams(location.search).get('mtnDemo');
+let mtnKeyOn = false; // off by default (it covers a third of a laptop-sized mountain); hover labels carry the meaning
 const mtnKeyBtn = document.getElementById('mtnKeyBtn');
 mtnKeyBtn.classList.toggle('off', !mtnKeyOn);
 mtnKeyBtn.addEventListener('click', () => {
