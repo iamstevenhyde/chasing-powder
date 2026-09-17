@@ -12,9 +12,9 @@
        Hue family lifted from chasing-powder-model.html (rust #c8552b / teal #25666f / gold #a9791f),
        re-pitched for dark-surface contrast. Fonts: Atkinson Hyperlegible body (dyslexia-friendly),
        Fraunces display, JetBrains Mono HUD. */
-    --bg:#141210; --panel:#1c1915; --panel2:#26211b; --line:#3a322a; --line2:#4a4036;
-    --text:#efe9e1; --dim:#a89c8d;
-    --rust:#c8552b; --rust-hi:#e07a4e; --gold:#d8a83f; --teal:#5aa7b0; --teal-d:#25666f;
+    --bg:#091216; --panel:#101d22; --panel2:#17282e; --line:#294047; --line2:#3b565d;
+    --text:#f2f5f2; --dim:#b1c2c2;
+    --rust:#b94f32; --rust-hi:#e17a52; --gold:#e0b65b; --teal:#72b8bd; --teal-d:#245f68;
     --danger:#e05a50; --ok:#7fb069; --ghost:#8d9db5;
     --font-body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',sans-serif;
     --font-display:'Fraunces',Georgia,serif;
@@ -148,6 +148,9 @@
     *{transition:none !important;}
   }
 
+  .hudIcon{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-right:5px;
+    color:var(--teal);font-family:var(--font-body);font-size:11px;line-height:1;}
+  #hud .stat:has(#cashNum) .hudIcon,#hud .stat:has(#profitNum) .hudIcon{color:var(--gold);}
   .joinRow{display:flex;gap:8px;margin:8px 0;}
   .joinRow input{flex:1;padding:10px 12px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);
     color:var(--text);font-family:var(--font-mono);font-size:15px;letter-spacing:.08em;}
@@ -167,7 +170,7 @@
     cursor:grab;touch-action:none;}
   #mtnGL.dragging{cursor:grabbing;}
   #viewToggle{position:absolute;top:10px;left:14px;display:flex;gap:4px;z-index:12;}
-  #viewToggle button{background:rgba(28,25,21,.82);border:1px solid var(--line2);color:var(--text);
+  #viewToggle button{background:rgba(10,24,29,.90);border:1px solid var(--line2);color:var(--text);
     border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:var(--font-body);}
   #viewToggle button:hover{border-color:var(--gold);}
   #viewToggle button:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
@@ -175,11 +178,13 @@
      nothing overlaps in either view. */
   #reportLine{top:46px !important;}
   #mtnCaption{position:absolute;top:48px;left:14px;right:14px;font-size:13px;color:var(--text);
-    background:rgba(28,25,21,.82);border:1px solid var(--gold);border-radius:8px;padding:6px 12px;
+    background:rgba(10,24,29,.90);border:1px solid var(--gold);border-radius:8px;padding:6px 12px;
     text-align:center;pointer-events:none;display:none;}
   #mtnLegendBox{position:absolute;bottom:140px;left:14px;font-size:11px;color:var(--dim);
-    background:rgba(28,25,21,.85);border:1px solid var(--line);border-radius:8px;
+    background:rgba(10,24,29,.92);border:1px solid var(--line);border-radius:8px;
     padding:8px 11px;line-height:1.55;max-width:220px;pointer-events:none;display:none;}
+  #reportLine,#logStrip,#legendBox{background:rgba(10,24,29,.90);}
+  #boardWrap{background:radial-gradient(ellipse at 50% 38%,#18313a 0%,#081116 74%,#050b0e 100%);}
   #stepDots{flex:0 0 auto;display:flex;justify-content:space-between;padding:12px 14px 0;}
   #stepDots .dotWrap{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;}
   #stepDots .dot{width:10px;height:10px;border-radius:50%;background:var(--line2);border:1px solid var(--line2);
@@ -203,11 +208,11 @@
 
 <div id="hud">
   <h1>CHASING POWDER</h1>
-  <div class="stat" id="teamStat">Resort <b id="teamName">&nbsp;</b></div>
-  <div class="stat">Season <b id="seasonNum">1</b>/6</div>
-  <div class="stat">Cash <b id="cashNum">$60</b></div>
-  <div class="stat">Cum. Profit <b id="profitNum">$0</b></div>
-  <div class="stat">Rep <b id="repNum">0.50</b></div>
+  <div class="stat" id="teamStat"><span class="hudIcon" aria-hidden="true">◆</span>Resort <b id="teamName">&nbsp;</b></div>
+  <div class="stat"><span class="hudIcon" aria-hidden="true">▦</span>Season <b id="seasonNum">1</b>/6</div>
+  <div class="stat"><span class="hudIcon" aria-hidden="true">●</span>Cash <b id="cashNum">$60</b></div>
+  <div class="stat"><span class="hudIcon" aria-hidden="true">↗</span>Cum. Profit <b id="profitNum">$0</b></div>
+  <div class="stat"><span class="hudIcon" aria-hidden="true">★</span>Rep <b id="repNum">0.50</b></div>
   <div class="spacer"></div>
   <button id="dossierBtn">Rival Dossiers</button>
   <button id="helpBtn">How to play</button>
@@ -1543,25 +1548,30 @@ const MountainGL = (() => {
   }
   // ---------- palette ----------
   var PAL = {skyTop:[0x2f,0x78,0x8f],skyHor:[0xb8,0xd2,0xd0],snowLit:[0xf5,0xf1,0xe7],snowSh:[0x9f,0xbe,0xc7],
-    rock:[0xb5,0x7b,0x4f],forLit:[0x2f,0x61,0x54],forSh:[0x1c,0x3f,0x3b],meadow:[0x7f,0x94,0x5e],
-    runCor:[0xed,0xf2,0xed],runOut:[0x1d,0x35,0x3b],lodgeWood:[0x8b,0x4d,0x2e],lodgeRoof:[0x4a,0x36,0x30],
+    rock:[0xa8,0x76,0x55],forLit:[0x2b,0x5b,0x50],forSh:[0x18,0x37,0x36],meadow:[0x72,0x89,0x5b],
+    runCor:[0xd9,0xe5,0xe4],runOut:[0x1d,0x35,0x3b],lodgeWood:[0x8b,0x4d,0x2e],lodgeRoof:[0x4a,0x36,0x30],
     crew:[0xe5,0x68,0x32],closedBar:[0xc9,0x34,0x2f],liftSteel:[0x58,0x67,0x68],cable:[0x1c,0x2c,0x30]};
   function c3(a){return [a[0]/255,a[1]/255,a[2]/255];}
   function lerp3(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
 
   // ---------- GL setup: gl/programs/buffers are created lazily in init(), not at closure build time ----------
   var glCanvas = null, gl = null, glOK = false;
-  var VS = 'attribute vec3 aPos;attribute vec3 aNrm;attribute vec3 aCol;'+
-    'uniform mat4 uMVP;uniform mat4 uModel;varying vec3 vN;varying vec3 vC;varying vec3 vW;'+
-    'void main(){vec4 w=uModel*vec4(aPos,1.0);vW=w.xyz;vN=mat3(uModel)*aNrm;vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=3.0;}';
-  var FS = 'precision mediump float;varying vec3 vN;varying vec3 vC;varying vec3 vW;'+
+  var VS = 'attribute vec3 aPos;attribute vec3 aNrm;attribute vec3 aCol;attribute vec2 aFx;'+
+    'uniform mat4 uMVP;uniform mat4 uModel;varying vec3 vN;varying vec3 vC;varying vec3 vW;varying vec2 vFx;'+
+    'void main(){vec4 w=uModel*vec4(aPos,1.0);vW=w.xyz;vN=mat3(uModel)*aNrm;vC=aCol;vFx=aFx;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=3.0;}';
+  var FS = 'precision mediump float;varying vec3 vN;varying vec3 vC;varying vec3 vW;varying vec2 vFx;'+
     'uniform vec3 uSunDir;uniform vec3 uSunCol;uniform vec3 uSkyCol;uniform vec3 uGndCol;uniform vec3 uFogCol;uniform vec3 uEye;uniform vec2 uFog;'+
-    'void main(){vec3 n=normalize(vN);float diff=max(dot(n,uSunDir),0.0);'+
-    'float band=floor(diff*3.0+0.45)/3.0;float hemi=n.y*0.5+0.5;vec3 amb=mix(uGndCol,uSkyCol,hemi);'+
-    'vec3 lit=vC*(amb*0.58+uSunCol*(0.18+band*0.78));vec3 viewDir=normalize(uEye-vW);'+
+    'void main(){vec3 n=normalize(vN);float d=length(uEye-vW);float cordFade=1.0-smoothstep(7.0,14.5,d);'+
+    'float cord=sin(vFx.y*155.0);n=normalize(n+vec3(cord*0.018,0.0,cord*0.012)*vFx.x*cordFade);'+
+    'float diff=max(dot(n,uSunDir),0.0);float band=floor(diff*3.0+0.45)/3.0;float hemi=n.y*0.5+0.5;'+
+    'vec3 amb=mix(uGndCol,uSkyCol,hemi);vec3 viewDir=normalize(uEye-vW);vec3 lit=vC*(amb*0.60+uSunCol*(0.16+band*0.72));'+
+    'float snow=smoothstep(0.58,0.88,min(vC.r,min(vC.g,vC.b)));float sparkle=pow(max(dot(reflect(-uSunDir,n),viewDir),0.0),28.0);'+
+    'lit+=uSunCol*sparkle*snow*(0.045+0.075*vFx.x);lit*=1.0+cord*0.035*vFx.x*cordFade*snow;'+
     'float contour=pow(1.0-max(dot(n,viewDir),0.0),3.2);float grain=fract(sin(dot(vW.xz,vec2(12.9898,78.233)))*43758.5453);'+
-    'lit*=0.965+grain*0.055;lit=mix(lit,vec3(0.065,0.12,0.13),contour*0.28);'+
-    'float d=length(uEye-vW);float fog=clamp((d-uFog.x)/uFog.y,0.0,0.82);gl_FragColor=vec4(mix(lit,uFogCol,fog),1.0);}';  var PVS='attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=2.5;}';
+    'float cavity=clamp((0.82-n.y)*0.14+(1.0-smoothstep(0.02,0.72,vW.y))*0.10,0.0,0.24);'+
+    'lit*=0.975+grain*0.04-cavity;lit=mix(lit,vec3(0.055,0.105,0.12),contour*0.24);'+
+    'float farFog=clamp((d-uFog.x)/uFog.y,0.0,0.78);float baseFog=(1.0-smoothstep(0.02,0.68,vW.y))*0.16;'+
+    'float fog=clamp(farFog+baseFog,0.0,0.84);gl_FragColor=vec4(mix(lit,uFogCol,fog),1.0);}';  var PVS='attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=2.5;}';
   var PFS='precision mediump float;void main(){gl_FragColor=vec4(0.95,0.97,1.0,0.85);}';
   var UVS='attribute vec3 aPos;attribute vec3 aCol;uniform mat4 uMVP;varying vec3 vC;void main(){vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=7.0;}';
   var UFS='precision mediump float;varying vec3 vC;void main(){gl_FragColor=vec4(vC,1.0);}';
@@ -1670,7 +1680,7 @@ const MountainGL = (() => {
     return ids.slice(0,count);
   }
   function terrainColor(state,tg,slots){
-    var wOff=state.snow==='powder'?-0.10:(state.snow==='drought'?0.15:0),snowLine=0.40+wOff;
+    var wOff=state.snow==='powder'?-0.12:(state.snow==='drought'?0.18:0),snowLine=0.32+wOff;
     var snowCol=c3(PAL.snowLit),snowShade=c3(PAL.snowSh),forestCol=c3(PAL.forLit),meadowCol=c3(PAL.meadow);
     var inkCol=c3(PAL.runOut),runCol=c3(PAL.runCor),runEdge=c3(PAL.runOut);
     var sentinelRock=[0.34,0.38,0.39],forgeRock=[0.67,0.43,0.27],sunRock=[0.69,0.53,0.39];
@@ -1682,10 +1692,13 @@ const MountainGL = (() => {
     var col=new Float32Array(tg.meta.length*3);
     for(var v=0;v<tg.meta.length;v++){
       var m=tg.meta[v],elevFrac=Math.min(1,m.h/PEAK_H),normY=tg.nrm[v*3+1];
-      var snowMix=Math.max(0,Math.min(1,(elevFrac-snowLine)/0.10));
+      var wx=Math.cos(m.ang)*m.r*R,wz=Math.sin(m.ang)*m.r*R;
+      var wind=smoothN(wx*0.42,wz*0.42,tg.rng2+71.0)-0.5;
+      var altSnow=Math.max(0,Math.min(1,(elevFrac-snowLine+wind*0.055)/0.13));
+      var slopeHold=Math.max(0.10,Math.min(1,(normY-0.28)/0.46));
+      var snowMix=altSnow*(0.28+0.72*slopeHold);
       var low=state.snow==='drought'?lerp3(forestCol,meadowCol,0.72):lerp3(forestCol,meadowCol,0.13);
       var base=lerp3(low,snowCol,snowMix);
-      var wx=Math.cos(m.ang)*m.r*R,wz=Math.sin(m.ang)*m.r*R;
 
       // Soft peak ownership lets geology change character without visible region seams.
       var sw=Math.exp(-Math.pow((wx+0.19*R)/(0.25*R),2)-Math.pow(wz/(0.23*R),2));
@@ -1737,6 +1750,27 @@ const MountainGL = (() => {
       col[v*3]=base[0];col[v*3+1]=base[1];col[v*3+2]=base[2];
     }
     return col;
+  }
+  // Per-vertex piste coverage and downhill distance drive subtle trail-aligned corduroy in GLSL.
+  // Props leave aFx disabled, so they receive the attribute's safe default of vec2(0).
+  function terrainEffects(state,tg,slots){
+    var activeIdx=activeRunIndices(state,slots),fx=new Float32Array(tg.meta.length*2);
+    for(var v=0;v<tg.meta.length;v++){
+      var m=tg.meta[v],best=0,phase=0;
+      for(var ri=0;ri<activeIdx.length;ri++){
+        var slot=slots[activeIdx[ri]];
+        if(m.r<slot.topR || m.r>0.92) continue;
+        var tt=(m.r-slot.topR)/(0.92-slot.topR);
+        var center=slot.ang+0.08*Math.sin(m.r*Math.PI*1.5)+slot.bend*Math.sin(tt*Math.PI);
+        var dd=Math.atan2(Math.sin(m.ang-center),Math.cos(m.ang-center));
+        var lateral=Math.abs(dd)*Math.max(m.r,0.07)*R,half=0.115+tt*0.055;
+        var mask=Math.max(0,Math.min(1,(half-lateral)/0.045));
+        mask=mask*mask*(3-2*mask);
+        if(mask>best){best=mask;phase=tt;}
+      }
+      fx[v*2]=best;fx[v*2+1]=phase;
+    }
+    return fx;
   }
   // ---------- prop mesh generators (bake to world space, batched per class) ----------
   function pushCone(arr,cx,cy,cz,r,h,segs,colr){
@@ -1841,6 +1875,27 @@ const MountainGL = (() => {
         arr.p.push(pt[0],pt[1],pt[2]);arr.n.push(0,1,0);arr.c.push(colr[0],colr[1],colr[2]);});
     }
   }
+  function pushRing(arr,cx,cy,cz,r0,r1,segs,colr){
+    for(var i=0;i<segs;i++){
+      var a0=i/segs*Math.PI*2,a1=(i+1)/segs*Math.PI*2;
+      var p0=[cx+Math.cos(a0)*r0,cy,cz+Math.sin(a0)*r0],p1=[cx+Math.cos(a0)*r1,cy,cz+Math.sin(a0)*r1];
+      var p2=[cx+Math.cos(a1)*r0,cy,cz+Math.sin(a1)*r0],p3=[cx+Math.cos(a1)*r1,cy,cz+Math.sin(a1)*r1];
+      [p0,p2,p1,p1,p2,p3].forEach(function(pt){arr.p.push(pt[0],pt[1],pt[2]);arr.n.push(0,1,0);arr.c.push(colr[0],colr[1],colr[2]);});
+    }
+  }
+  function pushTerrainSkirt(arr,tg){
+    var segs=96,topCol=[0.35,0.49,0.50],botCol=[0.075,0.15,0.18];
+    for(var i=0;i<segs;i++){
+      var a0=i/segs*Math.PI*2,a1=(i+1)/segs*Math.PI*2;
+      var r0=R*(0.988+0.010*Math.sin(a0*7+tg.rng2)),r1=R*(0.988+0.010*Math.sin(a1*7+tg.rng2));
+      var x0=Math.cos(a0)*r0,z0=Math.sin(a0)*r0,x1=Math.cos(a1)*r1,z1=Math.sin(a1)*r1;
+      var y0=heightAt(x0,z0,tg.rng2,tg.ridgeA)+0.012,y1=heightAt(x1,z1,tg.rng2,tg.ridgeA)+0.012;
+      var b0=-0.48-0.12*Math.sin(a0*5.0+1.7),b1=-0.48-0.12*Math.sin(a1*5.0+1.7);
+      var n=v3norm([Math.cos((a0+a1)*0.5),0,Math.sin((a0+a1)*0.5)]);
+      [[x0,y0,z0,topCol],[x1,y1,z1,topCol],[x0,b0,z0,botCol],[x0,b0,z0,botCol],[x1,y1,z1,topCol],[x1,b1,z1,botCol]].forEach(function(q){
+        arr.p.push(q[0],q[1],q[2]);arr.n.push(n[0],n[1],n[2]);arr.c.push(q[3][0],q[3][1],q[3][2]);});
+    }
+  }
   function pushRoadArc(arr,tg,r0,a0,a1,width,colr){
     var prev=null,steps=34;
     for(var i=0;i<=steps;i++){
@@ -1878,6 +1933,98 @@ const MountainGL = (() => {
     pushBox(body,cx,cy+0.045*scale,cz,0.077*scale,0.045*scale,0.067*scale,[0.13,0.22,0.24]);
     pushPrism(body,cx,cy+0.13*scale,cz,0.082*scale,0.045*scale,0.072*scale,c3(PAL.lodgeRoof));
     pushCyl(body,cx,cy+0.16*scale,cz,0.009*scale,0.10*scale,5,c3(PAL.cable));
+  }
+  function pushAFrameLodge(body,lights,cx,cy,cz,scale){
+    var wood=c3(PAL.lodgeWood),roof=[0.19,0.25,0.27],snow=c3(PAL.snowLit);
+    pushBox(body,cx,cy+0.035*scale,cz,0.42*scale,0.035*scale,0.31*scale,[0.24,0.18,0.15]);
+    pushPrism(body,cx,cy+0.04*scale,cz,0.50*scale,0.62*scale,0.34*scale,wood);
+    pushPrism(body,cx,cy+0.065*scale,cz,0.53*scale,0.64*scale,0.35*scale,roof);
+    pushPrism(body,cx,cy+0.09*scale,cz,0.47*scale,0.58*scale,0.355*scale,snow);
+    pushBox(body,cx+0.515*scale,cy+0.16*scale,cz,0.025*scale,0.14*scale,0.16*scale,[0.16,0.13,0.12]);
+    for(var wi=-1;wi<=1;wi++) pushQuadX(lights,cx+0.536*scale,cy+(0.20+Math.abs(wi)*0.025)*scale,cz+wi*0.13*scale,0.085*scale,0.11*scale,[1.0,0.70,0.30]);
+    pushBox(body,cx-0.22*scale,cy+0.67*scale,cz-0.12*scale,0.035*scale,0.16*scale,0.04*scale,[0.20,0.18,0.17]);
+  }
+  function pushSnowGun(body,cx,cy,cz,ang,scale){
+    var steel=c3(PAL.liftSteel),dark=[0.13,0.20,0.22],safety=[0.94,0.60,0.18];
+    pushBox(body,cx,cy+0.018*scale,cz,0.12*scale,0.018*scale,0.09*scale,dark);
+    pushCyl(body,cx,cy+0.025*scale,cz,0.022*scale,0.15*scale,6,steel);
+    pushBox(body,cx,cy+0.20*scale,cz,0.09*scale,0.07*scale,0.07*scale,safety);
+    pushPlate(body,cx+Math.cos(ang)*0.074*scale,cy+0.20*scale,cz+Math.sin(ang)*0.074*scale,ang,0.115*scale,0.115*scale,dark);
+    pushCyl(body,cx-0.08*scale,cy,cz-0.065*scale,0.025*scale,0.045*scale,7,dark);
+    pushCyl(body,cx-0.08*scale,cy,cz+0.065*scale,0.025*scale,0.045*scale,7,dark);
+  }
+  function pushSnowmobile(body,cx,cy,cz,ang,scale){
+    var red=[0.80,0.13,0.08],dark=[0.09,0.12,0.13],steel=c3(PAL.liftSteel);
+    var dx=Math.cos(ang),dz=Math.sin(ang),tx=-dz,tz=dx;
+    pushRibbon(body,[cx-dx*0.18*scale,cy+0.014,cz-dz*0.18*scale],[cx+dx*0.24*scale,cy+0.014,cz+dz*0.24*scale],0.055*scale,dark);
+    pushRibbon(body,[cx-dx*0.12*scale+tx*0.09*scale,cy+0.012,cz-dz*0.12*scale+tz*0.09*scale],[cx+dx*0.25*scale+tx*0.09*scale,cy+0.012,cz+dz*0.25*scale+tz*0.09*scale],0.018*scale,steel);
+    pushRibbon(body,[cx-dx*0.12*scale-tx*0.09*scale,cy+0.012,cz-dz*0.12*scale-tz*0.09*scale],[cx+dx*0.25*scale-tx*0.09*scale,cy+0.012,cz+dz*0.25*scale-tz*0.09*scale],0.018*scale,steel);
+    pushBox(body,cx,cy+0.075*scale,cz,0.18*scale,0.065*scale,0.12*scale,red);
+    pushBox(body,cx-dx*0.11*scale,cy+0.155*scale,cz-dz*0.11*scale,0.10*scale,0.04*scale,0.10*scale,dark);
+    pushPlate(body,cx+dx*0.18*scale,cy+0.19*scale,cz+dz*0.18*scale,ang,0.20*scale,0.13*scale,[0.45,0.70,0.75]);
+  }
+  function pushPatrolOutpost(body,glow,cx,cy,cz,scale){
+    pushBox(body,cx,cy+0.045*scale,cz,0.24*scale,0.045*scale,0.18*scale,[0.38,0.39,0.36]);
+    pushBox(body,cx,cy+0.18*scale,cz,0.21*scale,0.14*scale,0.16*scale,[0.43,0.27,0.18]);
+    pushPrism(body,cx,cy+0.33*scale,cz,0.25*scale,0.15*scale,0.19*scale,[0.17,0.22,0.23]);
+    pushPrism(body,cx,cy+0.35*scale,cz,0.21*scale,0.11*scale,0.195*scale,c3(PAL.snowLit));
+    pushQuadX(glow,cx+0.215*scale,cy+0.19*scale,cz,0.13*scale,0.10*scale,[1.0,0.68,0.28]);
+  }
+  function pushRescueSled(body,cx,cy,cz,ang,scale){
+    var dx=Math.cos(ang),dz=Math.sin(ang),tx=-dz,tz=dx,orange=[0.94,0.36,0.08],steel=c3(PAL.liftSteel);
+    pushRibbon(body,[cx-dx*0.24*scale,cy+0.018,cz-dz*0.24*scale],[cx+dx*0.24*scale,cy+0.018,cz+dz*0.24*scale],0.18*scale,orange);
+    pushRibbon(body,[cx-dx*0.28*scale+tx*0.11*scale,cy+0.01,cz-dz*0.28*scale+tz*0.11*scale],[cx+dx*0.30*scale+tx*0.11*scale,cy+0.01,cz+dz*0.30*scale+tz*0.11*scale],0.016*scale,steel);
+    pushRibbon(body,[cx-dx*0.28*scale-tx*0.11*scale,cy+0.01,cz-dz*0.28*scale-tz*0.11*scale],[cx+dx*0.30*scale-tx*0.11*scale,cy+0.01,cz+dz*0.30*scale-tz*0.11*scale],0.016*scale,steel);
+  }
+  function pushFloodlight(body,glow,cx,cy,cz,ang,scale){
+    var steel=c3(PAL.liftSteel),lamp=[0.74,0.88,0.90];
+    pushCyl(body,cx,cy,cz,0.018*scale,0.52*scale,6,steel);
+    pushBox(body,cx,cy+0.52*scale,cz,0.15*scale,0.018*scale,0.018*scale,steel);
+    for(var i=-1;i<=1;i++) pushPlate(glow,cx-Math.sin(ang)*i*0.11*scale+Math.cos(ang)*0.012,cy+0.52*scale,cz+Math.cos(ang)*i*0.11*scale+Math.sin(ang)*0.012,ang,0.075*scale,0.055*scale,lamp);
+  }
+  function pushHelipad(body,glow,tg){
+    var ang=-0.82,rr=0.49,x=Math.cos(ang)*rr*R,z=Math.sin(ang)*rr*R,y=heightAt(x,z,tg.rng2,tg.ridgeA)+0.055;
+    pushCyl(body,x,y-0.11,z,0.48,0.11,32,[0.13,0.20,0.22]);
+    pushFlatOval(body,x,y,z,0.48,0.48,32,[0.20,0.28,0.29]);
+    pushRing(body,x,y+0.008,z,0.34,0.40,32,[0.91,0.91,0.82]);
+    pushRibbon(body,[x-0.16,y+0.012,z-0.13],[x-0.16,y+0.012,z+0.13],0.055,[0.91,0.91,0.82]);
+    pushRibbon(body,[x+0.16,y+0.012,z-0.13],[x+0.16,y+0.012,z+0.13],0.055,[0.91,0.91,0.82]);
+    pushRibbon(body,[x-0.16,y+0.012,z],[x+0.16,y+0.012,z],0.055,[0.91,0.91,0.82]);
+    for(var i=0;i<3;i++){var a=ang-0.75+i*0.75,lx=x+Math.cos(a)*0.56,lz=z+Math.sin(a)*0.56,ly=heightAt(lx,lz,tg.rng2,tg.ridgeA);pushFloodlight(body,glow,lx,ly,lz,a+Math.PI,0.72);}
+    pushPatrolOutpost(body,glow,x-0.52,y,z+0.24,0.72);
+    pushRescueSled(body,x+0.30,y+0.012,z+0.32,ang+Math.PI*0.5,0.58);
+    pushSnowmobile(body,x+0.47,y,z-0.18,ang+Math.PI,0.64);
+  }
+  function pushSnowmakingHub(body,glow,tg){
+    var ang=0.57,rr=0.88,x=Math.cos(ang)*rr*R,z=Math.sin(ang)*rr*R,y=heightAt(x,z,tg.rng2,tg.ridgeA);
+    pushBox(body,x,y+0.12,z,0.26,0.12,0.20,[0.33,0.37,0.36]);
+    pushPrism(body,x,y+0.24,z,0.29,0.14,0.23,[0.17,0.23,0.24]);
+    pushQuadX(glow,x+0.263,y+0.13,z,0.15,0.10,[0.78,0.88,0.76]);
+    for(var i=0;i<3;i++){
+      var a=0.16+i*0.13,r=0.60+i*0.08,px=Math.cos(a)*r*R,pz=Math.sin(a)*r*R,py=heightAt(px,pz,tg.rng2,tg.ridgeA)+0.022;
+      pushRibbon(body,[x,y+0.018,z],[px,py,pz],0.018,[0.20,0.43,0.60]);
+    }
+  }
+  function pushEventVillage(body,glow,tg,scale){
+    var bx=R*0.77,bz=-R*0.19,by=heightAt(bx,bz,tg.rng2,tg.ridgeA),cols=[[0.72,0.16,0.10],[0.16,0.36,0.58],[0.25,0.50,0.30]];
+    for(var i=0;i<2;i++){
+      var x=bx-0.22*i,z=bz-0.24*i,y=heightAt(x,z,tg.rng2,tg.ridgeA),c=cols[i];
+      pushBox(body,x,y+0.075*scale,z,0.16*scale,0.075*scale,0.10*scale,c);
+      pushBox(body,x-0.13*scale,y+0.045*scale,z,0.05*scale,0.045*scale,0.09*scale,[0.14,0.18,0.19]);
+      pushQuadX(glow,x+0.162*scale,y+0.085*scale,z,0.12*scale,0.075*scale,[1.0,0.68,0.28]);
+    }
+    pushBox(body,bx+0.18,by+0.09,bz-0.32,0.20,0.022,0.08,[0.47,0.29,0.17]);
+    for(var l=-1;l<=1;l+=2) pushBox(body,bx+0.18+l*0.13,by+0.04,bz-0.32,0.018,0.04,0.07,[0.33,0.22,0.16]);
+    buildRibbonPath(body,tg,-0.66,0.025,0.015,0.58,0.90,0.11,[0.62,0.78,0.86],[0.19,0.43,0.66],1);
+  }
+  function pushSpa(body,glow,tg){
+    var x=R*0.62,z=-R*0.59,y=heightAt(x,z,tg.rng2,tg.ridgeA);
+    pushBox(body,x,y+0.11,z,0.42,0.11,0.25,[0.46,0.34,0.25]);
+    pushBox(body,x-0.18,y+0.28,z+0.03,0.26,0.10,0.22,[0.33,0.29,0.26]);
+    pushBox(body,x+0.25,y+0.23,z-0.04,0.18,0.07,0.18,[0.26,0.31,0.31]);
+    for(var i=-1;i<=1;i++) pushQuadX(glow,x+0.423,y+0.14,z+i*0.12,0.08,0.11,[0.48,0.76,0.82]);
+    pushFlatOval(body,x+0.16,y+0.025,z+0.35,0.28,0.18,20,[0.30,0.66,0.71]);
+    pushFlatOval(body,x+0.16,y+0.032,z+0.35,0.20,0.12,20,[0.57,0.84,0.83]);
   }
   function buildGondolaLine(towers,cable,cabins,landmarks,windows,tg,now){
     var baseAng=0.43,baseRr=0.82,topAng=1.18,topRr=0.47,towerH=0.72;
@@ -1982,12 +2129,24 @@ const MountainGL = (() => {
       pushStrip(arr,a,b,half-edge,half,edgeCol);
     }
   }
-  function buildChairsBatch(state,tg,now){
-    var chairs=newArr(), towerH=0.66*0.8, nTowers=Math.max(0,Math.round((state.cap-100)/10));
-    var lift1N=Math.min(nTowers,7), lift2N=Math.max(0,Math.min(7,nTowers-7));
-    buildLiftChairs(chairs,tg, 0.25,0.74, 0.6,0.35, lift1N, towerH, 2, now);
-    buildLiftChairs(chairs,tg, -0.25,0.74, -0.6,0.35, lift2N, towerH, 2, now);
-    return {chairs:toBuf(chairs)};
+  function pushSkier(body,tg,slot,p,idx){
+    var r=slot.topR+p*(0.88-slot.topR),ang=slot.ang+0.08*Math.sin(r*Math.PI*1.5)+slot.bend*Math.sin(p*Math.PI);
+    var x=Math.cos(ang)*r*R,z=Math.sin(ang)*r*R,y=heightAt(x,z,tg.rng2,tg.ridgeA)+0.025;
+    var r2=Math.min(0.89,r+0.035),ang2=slot.ang+0.08*Math.sin(r2*Math.PI*1.5)+slot.bend*Math.sin(Math.min(1,p+0.04)*Math.PI);
+    var x2=Math.cos(ang2)*r2*R,z2=Math.sin(ang2)*r2*R,dx=x2-x,dz=z2-z,len=Math.hypot(dx,dz)||1;
+    dx/=len;dz/=len;var tx=-dz,tz=dx,gear=[[0.86,0.20,0.12],[0.16,0.39,0.68],[0.92,0.57,0.12],[0.34,0.56,0.25]][idx%4];
+    pushRibbon(body,[x-dx*0.07+tx*0.025,y,z-dz*0.07+tz*0.025],[x+dx*0.10+tx*0.025,y,z+dz*0.10+tz*0.025],0.011,[0.10,0.13,0.15]);
+    pushRibbon(body,[x-dx*0.07-tx*0.025,y,z-dz*0.07-tz*0.025],[x+dx*0.10-tx*0.025,y,z+dz*0.10-tz*0.025],0.011,[0.10,0.13,0.15]);
+    pushCyl(body,x,y,z,0.026,0.115,5,gear);pushOcta(body,x,y+0.145,z,0.032,[0.78,0.48,0.29]);
+  }
+  function buildChairsBatch(state,tg,slots,now){
+    var chairs=newArr(),skiers=newArr(),towerH=0.66*0.8,nTowers=Math.max(0,Math.round((state.cap-100)/10));
+    var lift1N=Math.min(nTowers,7),lift2N=Math.max(0,Math.min(7,nTowers-7));
+    buildLiftChairs(chairs,tg,0.25,0.74,0.6,0.35,lift1N,towerH,2,now);
+    buildLiftChairs(chairs,tg,-0.25,0.74,-0.6,0.35,lift2N,towerH,2,now);
+    var active=activeRunIndices(state,slots),nSkiers=Math.min(18,active.length*2);
+    for(var i=0;i<nSkiers;i++){var phase=(now*0.000035+i/Math.max(1,nSkiers)+(i%3)*0.071)%1;pushSkier(skiers,tg,slots[active[i%active.length]],phase,i);}
+    return {chairs:toBuf(chairs),skiers:toBuf(skiers)};
   }
   // mtnCounts(state), defined once at the top level of this <script> (used by the market pipeline's
   // self-test too), replaces the prototype's own deriveCounts -- one formula set, not two copies.
@@ -1995,10 +2154,11 @@ const MountainGL = (() => {
     var dc = mtnCounts(state);
     // Active slots are camera-prioritized so early builds read clearly from the default view.
     var activeIdx=activeRunIndices(state,slots);
-    var towers=newArr(), lodge=newArr(), village=newArr(), crew=newArr(), guns=newArr(), flags=newArr(), gate=newArr(), stage=newArr(), landmarks=newArr(), gondolas=newArr();
+    var towers=newArr(), lodge=newArr(), village=newArr(), crew=newArr(), guns=newArr(), flags=newArr(), gate=newArr(), stage=newArr(), landmarks=newArr(), gondolas=newArr(), skirt=newArr();
     var cable=newArr(), markers=newArr(), barriers=newArr(), windows=newArr(), ribbons=newArr();
     var LODGE_H = 0.66, towerH = LODGE_H*0.8, baseR = 0.74;
     var lodgeX = R*0.80, lodgeZ = 0; // reference point for banner/gate/stage even if the lodge box itself isn't built yet
+    pushTerrainSkirt(skirt,tg);
     // A legible resort base: lake, access road, arrival plaza and lift station anchor the mountain.
     var lakeX=R*0.69,lakeZ=-R*0.43,lakeY=heightAt(lakeX,lakeZ,tg.rng2,tg.ridgeA)+0.035;
     pushFlatOval(landmarks,lakeX,lakeY,lakeZ,R*0.18,R*0.105,28,[0.32,0.64,0.70]);
@@ -2006,7 +2166,7 @@ const MountainGL = (() => {
     pushRoadArc(landmarks,tg,0.91,-0.94,0.72,0.13,[0.34,0.31,0.27]);
     var plazaY=heightAt(lodgeX,lodgeZ,tg.rng2,tg.ridgeA)+0.028;
     pushFlatOval(landmarks,lodgeX,plazaY,lodgeZ,0.68,0.52,24,[0.77,0.72,0.62]);
-    if(dc.chutes) pushObservationDeck(landmarks,tg,0.86);
+    if(dc.chutes){ pushObservationDeck(landmarks,tg,0.86); pushHelipad(landmarks,windows,tg); }
     // lift 1 runs up one flank from the lodge apron; a second lift starts on the OTHER flank once
     // the count would exceed 7 towers on a single line (a picket fence)
     var nTowers = dc.towers;
@@ -2018,7 +2178,8 @@ const MountainGL = (() => {
     if(state.lodgeBuilt){
       var lx=lodgeX, lz=lodgeZ, lh=heightAt(lx,lz,tg.rng2,tg.ridgeA);
       var lt = stamp('lodge',1), sc=popScale(lt[0],now);
-      pushResortHouse(lodge,windows,lx,lh,lz,1.18*sc,c3(PAL.lodgeRoof),5);
+      pushAFrameLodge(lodge,windows,lx,lh,lz,0.92*sc);
+      pushSnowmobile(lodge,lx+0.42*sc,lh,lz-0.36*sc,0.18,0.58*sc);
       pushResortHouse(lodge,windows,lx-0.05*sc,lh,lz-0.48*sc,0.68*sc,[0.23,0.28,0.28],3);
       pushResortHouse(lodge,windows,lx-0.05*sc,lh,lz+0.48*sc,0.68*sc,[0.23,0.28,0.28],3);
       var nV = dc.village;
@@ -2032,6 +2193,7 @@ const MountainGL = (() => {
         var roofTone=i2%3===0?[0.27,0.22,0.20]:(i2%3===1?[0.38,0.27,0.22]:c3(PAL.lodgeRoof));
         pushResortHouse(village,windows,vx,vh,vz,(0.34+(i2%3)*0.045)*vs,roofTone,2);
       }
+      if((state.built.lodging||0)>=18) pushSpa(village,windows,tg);
     }
     var nFigures = dc.crew;
     var crewH = LODGE_H*0.35, bodyH = crewH*0.7, headR = crewH*0.15, crewR=0.0825;
@@ -2062,7 +2224,7 @@ const MountainGL = (() => {
       var mx=Math.cos(slotM.ang)*signR*R, mz=Math.sin(slotM.ang)*signR*R;
       var mBase=heightAt(mx,mz,tg.rng2,tg.ridgeA), rsc=popScale(rt[mi],now);
       // Terrain vertex colours form the full corridor; this narrow highlight reads as grooming, not a floating ribbon.
-      buildRibbonPath(ribbons,tg,slotM.ang,0.08,slotM.bend,slotM.topR,0.9,0.026,closedSet[mi]?closedFill:[0.96,0.97,0.93],closedSet[mi]?closedFill:[0.96,0.97,0.93],rsc);
+      buildRibbonPath(ribbons,tg,slotM.ang,0.08,slotM.bend,slotM.topR,0.9,0.015,closedSet[mi]?closedFill:[0.82,0.88,0.88],closedSet[mi]?closedFill:[0.82,0.88,0.88],rsc);
       var mscale=popScale(mt[mi],now)*0.14, postH=0.15;
       pushCyl(markers,mx,mBase,mz,0.012,postH,5,c3(PAL.liftSteel));
       var signCol = slotM.diff===0?[0.29,0.55,0.23]:(slotM.diff===1?[0.18,0.37,0.66]:[0.1,0.1,0.1]);
@@ -2079,11 +2241,13 @@ const MountainGL = (() => {
       pushBox(barriers,cxB,hB+0.03*bsc,czB,0.13*bsc,0.03*bsc,0.13*bsc,c3(PAL.closedBar)); // bright, solid bar: reads at distance
     }
     if(state.bets.snowmaking){
-      var gt = stamp('gun',3);
-      for(var i3=0;i3<3;i3++){
-        var a3=slots[0].ang+i3*0.06, r3b=0.5+i3*0.1;
-        var gx=Math.cos(a3)*r3b*R, gz=Math.sin(a3)*r3b*R, gh=heightAt(gx,gz,tg.rng2,tg.ridgeA), gs=popScale(gt[i3],now);
-        pushCyl(guns,gx,gh,gz,0.02,0.12*gs,5,c3(PAL.liftSteel));
+      pushSnowmakingHub(guns,windows,tg);
+      var gt = stamp('gun',6);
+      for(var i3=0;i3<6;i3++){
+        var gunSlot=activeIdx.length?slots[activeIdx[i3%activeIdx.length]]:slots[i3%slots.length];
+        var a3=gunSlot.ang+(i3%2?0.025:-0.025),r3b=0.52+(i3%3)*0.13;
+        var gx=Math.cos(a3)*r3b*R,gz=Math.sin(a3)*r3b*R,gh=heightAt(gx,gz,tg.rng2,tg.ridgeA),gs=popScale(gt[i3],now);
+        pushSnowGun(guns,gx,gh,gz,a3,0.52*gs);
       }
     }
     if(state.bets.megapass){
@@ -2100,10 +2264,8 @@ const MountainGL = (() => {
       pushBox(gate,0.3*R,0.12*gs2,0.02*R,0.02,0.12*gs2,0.15*gs2,c3(PAL.lodgeWood));
     }
     if(state.built.events>0){
-      // a low platform in front of the lodge
-      var st = stamp('stage',1), ss=popScale(st[0],now);
-      var sx=lodgeX+0.06, sz=lodgeZ-0.45, sh=heightAt(sx,sz,tg.rng2,tg.ridgeA);
-      pushBox(stage,sx,sh+0.015*ss,sz,0.15*ss,0.015*ss,0.1*ss,c3(PAL.lodgeWood));
+      var st=stamp('stage',1),ss=popScale(st[0],now);
+      pushEventVillage(stage,windows,tg,ss);
     }
     // ---- choices that previously left no mark on the mountain (added 2026-09-15) ----
     // Marketing: billboards along the right-hand rim road, one per $4 of cumulative spend (max 6)
@@ -2154,7 +2316,7 @@ const MountainGL = (() => {
         pushPanel(stage,oX,oH+0.1*sos,oZ,oA,0.16*sos,0.1*sos,1.0,[0.13,0.22,0.42]);
       }
     }
-    return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),gondolas:toBuf(gondolas),
+    return {towers:toBuf(towers),lodge:toBuf(lodge),village:toBuf(village),landmarks:toBuf(landmarks),gondolas:toBuf(gondolas),skirt:toBuf(skirt),
       crew:toBuf(crew),guns:toBuf(guns),flags:toBuf(flags),gate:toBuf(gate),stage:toBuf(stage),
       cable:toBuf(cable),markers:toBuf(markers),barriers:toBuf(barriers),windows:toBuf(windows),ribbons:toBuf(ribbons)};
   }
@@ -2197,14 +2359,14 @@ const MountainGL = (() => {
   var drawCalls=0, lastCounts={};
   // dynamic props (everything but the moving chairs) are cached: rebuilt only when the state
   // signature changes, or for 650ms after a change while pop-in tweens are still animating
-  var propsCache=null, propsKey=null, lastChairsBuf=null;
+  var propsCache=null, propsKey=null, lastChairsBuf=null, lastSkiersBuf=null;
   var state = null; // set via setState(); replaces the prototype's global STATE
   function stateSig(s){ return [s.seed,s.seat,s.snow,s.cap,s.staff,s._util,s._reachHi,s.lodgeBuilt,
     s.built.runs,s.built.lodging,s.built.events,s.bets.snowmaking,s.bets.megapass,s.bets.exclusivity,s.bets.valuesBrand,
     s.built.marketing||0,s.bets.costRedesign,s.pendingHire||0,Math.round((s.dayPrice==null?0.5:s.dayPrice)*100)].join('|'); }
   function ensureScene(){
     if(cache.seed!==state.seed || cache.seat!==state.seat){
-      if(cache.tg){ gl.deleteBuffer(cache.tg.gp); gl.deleteBuffer(cache.tg.gn); gl.deleteBuffer(cache.tg.gi); if(cache.tg.gc) gl.deleteBuffer(cache.tg.gc); }
+      if(cache.tg){ gl.deleteBuffer(cache.tg.gp); gl.deleteBuffer(cache.tg.gn); gl.deleteBuffer(cache.tg.gi); if(cache.tg.gc) gl.deleteBuffer(cache.tg.gc); if(cache.tg.gfx) gl.deleteBuffer(cache.tg.gfx); }
       cache.tg = buildTerrain(state.seed,state.seat);
       cache.tg.gp=mkBuf(cache.tg.pos); cache.tg.gn=mkBuf(cache.tg.nrm);
       cache.tg.gi=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,cache.tg.gi); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,cache.tg.idx,gl.STATIC_DRAW);
@@ -2225,7 +2387,9 @@ const MountainGL = (() => {
   function onStateChanged(){
     ensureScene();
     var terrColBuf = terrainColor(state,cache.tg,cache.slots);
+    var terrFxBuf = terrainEffects(state,cache.tg,cache.slots);
     if(cache.tg.gc) gl.deleteBuffer(cache.tg.gc); cache.tg.gc = mkBuf(terrColBuf);
+    if(cache.tg.gfx) gl.deleteBuffer(cache.tg.gfx); cache.tg.gfx = mkBuf(terrFxBuf);
   }
   function initSnow(){ snowFlakes=new Float32Array(snowN*3);
     for(var i=0;i<snowN;i++){ snowFlakes[i*3]=(Math.random()-0.5)*R*2; snowFlakes[i*3+1]=Math.random()*3.5; snowFlakes[i*3+2]=(Math.random()-0.5)*R*2; } }
@@ -2243,8 +2407,9 @@ const MountainGL = (() => {
       propsCache = buildStaticProps(state,cache.tg,cache.slots,now);
       for(var uk in propsCache) if(uk!=='windows') glUp(propsCache[uk]);
     }
-    var chairsBuf = buildChairsBatch(state,cache.tg,now);
+    var chairsBuf = buildChairsBatch(state,cache.tg,cache.slots,now);
     glFree(lastChairsBuf); glUp(chairsBuf.chairs); lastChairsBuf=chairsBuf.chairs;
+    glFree(lastSkiersBuf); glUp(chairsBuf.skiers); lastSkiersBuf=chairsBuf.skiers;
     var dynProps = propsCache;
     gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     var eyeDist=10.6, eyeH=2.05;
@@ -2277,18 +2442,21 @@ const MountainGL = (() => {
     gl.uniform3fv(gl.getUniformLocation(PROG,'uFogCol'), fogCol);
     gl.uniform2fv(gl.getUniformLocation(PROG,'uFog'), [fogStart,fogRange]);
     gl.uniform3fv(gl.getUniformLocation(PROG,'uEye'), eye);
-    var aP=gl.getAttribLocation(PROG,'aPos'), aN=gl.getAttribLocation(PROG,'aNrm'), aC=gl.getAttribLocation(PROG,'aCol');
+    var aP=gl.getAttribLocation(PROG,'aPos'), aN=gl.getAttribLocation(PROG,'aNrm'), aC=gl.getAttribLocation(PROG,'aCol'), aFx=gl.getAttribLocation(PROG,'aFx');
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,cache.tg.gi);
     gl.bindBuffer(gl.ARRAY_BUFFER,cache.tg.gp); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,cache.tg.gn); gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,cache.tg.gc); gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,cache.tg.gfx); gl.enableVertexAttribArray(aFx); gl.vertexAttribPointer(aFx,2,gl.FLOAT,false,0,0);
     gl.uniformMatrix4fv(gl.getUniformLocation(PROG,'uMVP'),false,mvp);
     gl.uniformMatrix4fv(gl.getUniformLocation(PROG,'uModel'),false,model);
     gl.drawElements(gl.TRIANGLES,cache.tg.idx.length,gl.UNSIGNED_SHORT,0); drawCalls++;
-    drawBatch(cache.trees.small,mvp,model); drawBatch(cache.trees.med,mvp,model); drawBatch(cache.trees.big,mvp,model);
     var dp=dynProps;
+    drawBatch(dp.skirt,mvp,model);
+    drawBatch(cache.trees.small,mvp,model); drawBatch(cache.trees.med,mvp,model); drawBatch(cache.trees.big,mvp,model);
     drawBatch(dp.landmarks,mvp,model);
     drawBatch(dp.towers,mvp,model); drawBatch(dp.cable,mvp,model); drawBatch(chairsBuf.chairs,mvp,model); drawBatch(dp.gondolas,mvp,model); drawBatch(dp.lodge,mvp,model);
+    drawBatch(chairsBuf.skiers,mvp,model);
     drawBatch(dp.village,mvp,model); drawBatch(dp.crew,mvp,model); drawBatch(dp.guns,mvp,model);
     drawBatch(dp.flags,mvp,model); drawBatch(dp.gate,mvp,model); drawBatch(dp.stage,mvp,model);
     drawBatch(dp.markers,mvp,model); drawBatch(dp.barriers,mvp,model);
