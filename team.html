@@ -1066,7 +1066,9 @@ async function onNewSeason(){
     setBoardView('mountain'); // inits MountainGL lazily if this is the first time Mountain has shown
     showMtnCaption('Season ' + s + ' resolved. Here is what you built.');
     MountainGL.setYaw(0.3); // the lodge sits at world angle 0; 0.3 is the model's camera-facing centre
-    mtnFreezeUntil = performance.now() + 4000;
+    // Reveal: what changed this season pops in family by family with a caption each; the
+    // spin stays frozen for the whole sequence (click the mountain to skip).
+    mtnFreezeUntil = performance.now() + startSeasonReveal(p, s - 1);
     didResolve = true;
   } else if (LAST_APPLIED_SEASON < 0 && s === 0) {
     document.getElementById('introOverlay').classList.remove('hidden');
@@ -1436,6 +1438,7 @@ mtnSpinBtn.addEventListener('click', ()=>setMtnSpin(!mtnSpinEnabled));
 mountainCanvas.addEventListener('pointerdown', e=>{
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   mtnDragging = true; mtnDragX = e.clientX;
+  if (performance.now() < mtnFreezeUntil) { mtnFreezeUntil = 0; clearReveal(); document.getElementById('mtnCaption').style.display = 'none'; } // click skips the reveal
   setMtnSpin(false);
   mountainCanvas.classList.add('dragging');
   mountainCanvas.setPointerCapture(e.pointerId);
@@ -1496,6 +1499,46 @@ document.querySelectorAll('#stepDots .dot').forEach(d=>{ d.addEventListener('cli
 // display state (the engine resort plus pending sliders) in the exact shape the renderer expects.
 // ==========================================================================
 let mtnFreezeUntil = 0;
+// ---- season-resolve reveal (WP6): diff the mountain's counts against last season, stagger the
+// pop-ins per family through MountainGL.setReveal, and cycle one caption per change.
+let PREV_MTN_COUNTS = null, revealTimers = [];
+function clearReveal(){
+  revealTimers.forEach(clearTimeout); revealTimers = [];
+  if (MountainGL.__inited) MountainGL.setReveal({});
+}
+function startSeasonReveal(p, seasonIdx){
+  const st = mtnPreviewState(), now = mtnCounts(st), prev = PREV_MTN_COUNTS || {};
+  const prevBets = PREV_MTN_BETS || {}, prevLodge = PREV_MTN_LODGE || false, prevLodging = PREV_MTN_LODGING || 0, prevEvents = PREV_MTN_EVENTS || 0;
+  const snow = (GAME.world.snowTrace || [])[seasonIdx];
+  const lines = [], delays = {};
+  let t = 0; const step = 700;
+  const add = (text, keys) => { lines.push({ text, at: t }); keys.forEach(k => delays[k] = t); t += step; };
+  if (snow === 'powder') add('Powder season', []); else if (snow === 'drought') add('Drought season', []);
+  if ((now.runs || 0) > (prev.runs || 0)) add('+' + (now.runs - (prev.runs || 0)) + ' runs cut', ['rb', 'mk']);
+  if ((now.towers || 0) > (prev.towers || 0)) add('+' + (now.towers - (prev.towers || 0)) + ' lift towers (capacity)', ['tw1', 'tw2']);
+  if (st.lodgeBuilt && !prevLodge) add('Base lodge opens', ['lodge']);
+  if ((now.village || 0) > (prev.village || 0)) add('+' + (now.village - (prev.village || 0)) + ' lodging', ['vil']);
+  if ((st.built.lodging || 0) >= 18 && prevLodging < 18) add('Spa opens', ['vil']);
+  if ((st.built.events || 0) > 0 && prevEvents === 0) add('Summer events village', ['stage']);
+  if ((now.billboards || 0) > (prev.billboards || 0)) add('Marketing: +' + (now.billboards - (prev.billboards || 0)) + ' billboards', ['bb']);
+  if ((now.crew || 0) > (prev.crew || 0)) add('+' + (now.crew - (prev.crew || 0)) + ' crew on the hill', ['crew']);
+  if (st.bets.snowmaking && !prevBets.snowmaking) add('Snowmaking on', ['gun']);
+  if (st.bets.megapass && !prevBets.megapass) add('Megapass: tram running', ['gondola', 'flag']);
+  if (st.bets.costRedesign && !prevBets.costRedesign) add('Cost redesign: solar array', ['solar']);
+  if ((now.closed || 0) > 0) add(now.closed + (now.closed === 1 ? ' run closed (understaffed)' : ' runs closed (understaffed)'), ['bar']);
+  if ((now.ghosts || 0) > 0) add('Hired crew arrive next season', ['ghost']);
+  PREV_MTN_COUNTS = now; PREV_MTN_BETS = Object.assign({}, st.bets); PREV_MTN_LODGE = st.lodgeBuilt;
+  PREV_MTN_LODGING = st.built.lodging || 0; PREV_MTN_EVENTS = st.built.events || 0;
+  clearReveal();
+  if (MountainGL.__inited) MountainGL.setReveal(delays);
+  const lead = 'Season ' + (seasonIdx + 1) + ' resolved.';
+  showMtnCaption(lines.length ? lead + ' ' + lines[0].text : lead + ' Here is what you built.');
+  lines.slice(1).forEach(l => revealTimers.push(setTimeout(() => showMtnCaption(l.text), 900 + l.at)));
+  const total = Math.min(7000, 1600 + lines.length * step);
+  revealTimers.push(setTimeout(clearReveal, total + 800));
+  return total;
+}
+let PREV_MTN_BETS = null, PREV_MTN_LODGE = false, PREV_MTN_LODGING = 0, PREV_MTN_EVENTS = 0;
 // State for the mountain is either the player's resolved engine state, or, while a plan is being
 // built, that state plus the pending sliders (mission item 2: live preview of what BUILD is doing).
 // Guards p.built missing for older rows by treating it as zeros. Shape matches MountainGL's STATE
@@ -1630,7 +1673,7 @@ const MountainGL = (() => {
     'float farFog=clamp((d-uFog.x)/uFog.y,0.0,0.72);float baseFog=(1.0-smoothstep(-0.45,0.55,vW.y))*0.14;'+
     'float fog=clamp(farFog+baseFog,0.0,0.80);gl_FragColor=vec4(mix(lit,uFogCol,fog),1.0);}';  var PVS='attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=2.5;}';
   var PFS='precision mediump float;void main(){gl_FragColor=vec4(0.95,0.97,1.0,0.85);}';
-  var UVS='attribute vec3 aPos;attribute vec3 aCol;uniform mat4 uMVP;varying vec3 vC;void main(){vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=7.0;}';
+  var UVS='attribute vec3 aPos;attribute vec3 aCol;uniform mat4 uMVP;uniform float uPt;varying vec3 vC;void main(){vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=uPt;}';
   var UFS='precision mediump float;varying vec3 vC;uniform float uGain;void main(){gl_FragColor=vec4(vC*uGain,1.0);}';
   var SVS='attribute vec2 aPos;varying vec2 vP;void main(){vP=aPos;gl_Position=vec4(aPos,0.9999,1.0);}';
   // Sky: a cream-to-sand gradient with a soft sun glow, a haze band at the horizon (NDC y=0, the
@@ -2222,6 +2265,7 @@ const MountainGL = (() => {
   function pushSpa(body,glow,tg){
     var x=R*0.62,z=-R*0.59,y=heightAt(x,z,tg.rng2,tg.ridgeA);
     hit(x,y+0.2,z,0.45,'Spa: Lodging spend reached $18');
+    emit(x+0.3,y+0.12,z+0.3,[0.96,0.96,0.94],-0.05,0.30,0.05,2.4,0.16); // pool steam
     if(PROPS.spa){ pushMesh(body,glow,'spa',x,y,z,Math.atan2(z,x),1.0); return; }
     pushBox(body,x,y+0.11,z,0.42,0.11,0.25,[0.46,0.34,0.25]);
     pushBox(body,x-0.18,y+0.28,z+0.03,0.26,0.10,0.22,[0.33,0.29,0.26]);
@@ -2242,10 +2286,7 @@ const MountainGL = (() => {
       pushBox(towers,x,h+towerH*sc,z,0.16,0.025,0.026,c3(PAL.liftSteel));
       var top=[x,h+towerH*sc,z];if(prevTop)pushRibbon(cable,prevTop,top,0.014,c3(PAL.cable));prevTop=top;
     }
-    for(var ci=0;ci<4;ci++){
-      var p=(0.14+ci*0.22)%1,cx=bx+(tx-bx)*p,cz=bz+(tz-bz)*p,cy=by+(ty-by)*p-0.13;
-      pushGondolaCabin(cabins,cx,cy,cz,1.0);
-    }
+    // cabins are drawn per frame by buildChairsBatch (they travel the cable)
     pushLiftTerminal(landmarks,windows,tg,baseAng,baseRr,0.86,'tram');
     pushLiftTerminal(landmarks,windows,tg,topAng,topRr,0.72,'tram');
   }
@@ -2298,7 +2339,10 @@ const MountainGL = (() => {
 
   // ---------- dynamic prop batches ----------
   var spawnTimes = {};
-  function stamp(key,n){ if(!spawnTimes[key]) spawnTimes[key]=[]; while(spawnTimes[key].length<n) spawnTimes[key].push(performance.now()); return spawnTimes[key]; }
+  // revealDelay[key] (ms) staggers the pop-in of NEW items of a family; the page sets it for the
+  // season-resolve reveal and clears it when the reveal ends
+  var revealDelay={};
+  function stamp(key,n){ if(!spawnTimes[key]) spawnTimes[key]=[]; while(spawnTimes[key].length<n) spawnTimes[key].push(performance.now()+(revealDelay[key]||0)); return spawnTimes[key]; }
   var tweenActive=false;
   function popScale(t0,now){ var dt=(now-t0)/600; if(dt<1) tweenActive=true; return Math.min(1, Math.max(0, 1-Math.pow(1-Math.min(1,dt),3))); }
 
@@ -2326,7 +2370,8 @@ const MountainGL = (() => {
     for(var ci=0;ci<nChairs;ci++){
       var p=(now*0.00006+ci/nChairs)%1;
       var xc=bx+(tx-bx)*p, zc=bz+(tz-bz)*p, yc=cyb+(cyt-cyb)*p-0.06;
-      pushBox(chairs,xc,yc,zc,0.04,0.04,0.04,c3(PAL.crew));
+      if(PROPS.chair) pushMesh(chairs,null,'chair',xc,yc+0.06,zc,Math.atan2(tz-bz,tx-bx),1.0,{parka:[[0.86,0.20,0.12],[0.16,0.39,0.68],[0.92,0.57,0.12]][ci%3]});
+      else pushBox(chairs,xc,yc,zc,0.04,0.04,0.04,c3(PAL.crew));
     }
   }
   function buildRibbonPath(arr,tg,ang0,curveAmp,bendAmp,topR,botR,width,fillCol,edgeCol,sc){
@@ -2351,7 +2396,10 @@ const MountainGL = (() => {
     var r2=Math.min(0.89,r+0.035),ang2=slot.ang+0.08*Math.sin(r2*Math.PI*1.5)+slot.bend*Math.sin(Math.min(1,p+0.04)*Math.PI);
     var x2=Math.cos(ang2)*r2*R,z2=Math.sin(ang2)*r2*R,dx=x2-x,dz=z2-z,len=Math.hypot(dx,dz)||1;
     dx/=len;dz/=len;var tx=-dz,tz=dx,gear=[[0.86,0.20,0.12],[0.16,0.39,0.68],[0.92,0.57,0.12],[0.34,0.56,0.25]][idx%4];
-    if(PROPS.skier){ pushMesh(body,null,'skier',x,y,z,Math.atan2(dz,dx),0.95,{parka:gear}); return; }
+    // carving: a lateral sway across the piste, heading turned into each edge
+    var sw=Math.sin(p*36+idx*1.7)*0.05,swd=Math.cos(p*36+idx*1.7)*0.05*36/(0.88-slot.topR)/R*0.02;
+    x+=tx*sw;z+=tz*sw;y=heightAt(x,z,tg.rng2,tg.ridgeA)+0.025;
+    if(PROPS.skier){ pushMesh(body,null,'skier',x,y,z,Math.atan2(dz,dx)+Math.max(-0.5,Math.min(0.5,swd*40)),0.95,{parka:gear}); return; }
     pushRibbon(body,[x-dx*0.07+tx*0.025,y,z-dz*0.07+tz*0.025],[x+dx*0.10+tx*0.025,y,z+dz*0.10+tz*0.025],0.011,[0.10,0.13,0.15]);
     pushRibbon(body,[x-dx*0.07-tx*0.025,y,z-dz*0.07-tz*0.025],[x+dx*0.10-tx*0.025,y,z+dz*0.10-tz*0.025],0.011,[0.10,0.13,0.15]);
     pushCyl(body,x,y,z,0.026,0.115,5,gear);pushOcta(body,x,y+0.145,z,0.032,[0.78,0.48,0.29]);
@@ -2363,6 +2411,23 @@ const MountainGL = (() => {
     buildLiftChairs(chairs,tg,-0.25,0.74,-0.6,0.35,lift2N,towerH,2,now);
     var active=activeRunIndices(state,slots),nSkiers=Math.min(18,active.length*2);
     for(var i=0;i<nSkiers;i++){var phase=(now*0.000035+i/Math.max(1,nSkiers)+(i%3)*0.071)%1;pushSkier(skiers,tg,slots[active[i%active.length]],phase,i);}
+    // tram cabins travel the cable (two up, two down), only once the Megapass bet exists
+    if(state.bets.megapass){
+      var gAng0=0.43,gRr0=0.82,gAng1=1.18,gRr1=0.47,gTowerH=0.72;
+      var gbx=Math.cos(gAng0)*gRr0*R,gbz=Math.sin(gAng0)*gRr0*R,gtx=Math.cos(gAng1)*gRr1*R,gtz=Math.sin(gAng1)*gRr1*R;
+      var gby=heightAt(gbx,gbz,tg.rng2,tg.ridgeA)+gTowerH,gty=heightAt(gtx,gtz,tg.rng2,tg.ridgeA)+gTowerH;
+      for(var ci=0;ci<4;ci++){
+        var gp=(now*0.000028+ci*0.25)%1,q=ci%2?1-gp:gp;
+        pushGondolaCabin(chairs,gbx+(gtx-gbx)*q,gby+(gty-gby)*q-0.13,gbz+(gtz-gbz)*q,1.0);
+      }
+    }
+    // a snowcat grooms the first run after dark (mature resort)
+    if(PROPS.snowcat && (state.season||0)>=4 && (state.built.lodging||0)>=18 && active.length){
+      var cs=slots[active[0]],cp=1-((now*0.000012)%1),cr=cs.topR+cp*(0.88-cs.topR),ca=cs.ang+0.08*Math.sin(cr*Math.PI*1.5)+cs.bend*Math.sin(cp*Math.PI);
+      var cxx=Math.cos(ca)*cr*R,czz=Math.sin(ca)*cr*R,cyy=heightAt(cxx,czz,tg.rng2,tg.ridgeA)+0.02;
+      var cr2=Math.max(cs.topR,cr-0.03),ca2=cs.ang+0.08*Math.sin(cr2*Math.PI*1.5)+cs.bend*Math.sin(Math.max(0,cp-0.04)*Math.PI);
+      pushMesh(skiers,null,'snowcat',cxx,cyy,czz,Math.atan2(Math.sin(ca2)*cr2*R-czz,Math.cos(ca2)*cr2*R-cxx),1.0);
+    }
     return {chairs:toBuf(chairs),skiers:toBuf(skiers)};
   }
   // mtnCounts(state), defined once at the top level of this <script> (used by the market pipeline's
@@ -2378,7 +2443,7 @@ const MountainGL = (() => {
     function lamp(x,y,z,r,c){ if(duskNow) pushFlatOval(glowDiscs,x,y+0.02,z,r,r*0.8,14,c||[0.26,0.16,0.05]); }
     var LODGE_H = 0.66, towerH = LODGE_H*0.8, baseR = 0.74;
     var lodgeX = R*0.80, lodgeZ = 0; // reference point for banner/gate/stage even if the lodge box itself isn't built yet
-    hits=[];
+    hits=[]; emitters=[];
     pushTerrainSkirt(skirt,tg);
     // A legible resort base: lake, access road, arrival plaza and lift station anchor the mountain.
     var lakeX=R*0.69,lakeZ=-R*0.43,lakeY=heightAt(lakeX,lakeZ,tg.rng2,tg.ridgeA)+0.035;
@@ -2404,6 +2469,7 @@ const MountainGL = (() => {
       pushAFrameLodge(lodge,windows,lx,lh,lz,0.92*sc);
       hit(lx,lh+0.35,lz,0.55,'Base lodge: Lodging built (comfort gate open)');
       lamp(lx+0.45,lh,lz,0.55,[0.30,0.19,0.06]);
+      emit(lx-0.05*0.97,lh+0.88*0.97,lz+0.30*0.97,[0.62,0.60,0.58],-0.25,0.42,0.10,3.2,0.10); // chimney smoke
       pushSnowmobile(lodge,lx+0.42*sc,lh,lz-0.36*sc,0.18,0.58*sc);
       if(PROPS.rental_shack){
         pushMesh(lodge,windows,'rental_shack',lx-0.05*sc,heightAt(lx-0.05*sc,lz-0.62*sc,tg.rng2,tg.ridgeA),lz-0.62*sc,0.35,0.85*sc);
@@ -2487,6 +2553,7 @@ const MountainGL = (() => {
         var gx=Math.cos(a3)*r3b*R,gz=Math.sin(a3)*r3b*R,gh=heightAt(gx,gz,tg.rng2,tg.ridgeA),gs=popScale(gt[i3],now);
         pushSnowGun(guns,gx,gh,gz,a3,0.52*gs);
         hit(gx,gh+0.12,gz,0.2,'Fan gun: Snowmaking bet (drought insurance)');
+        emit(gx+Math.cos(a3)*0.12,gh+0.17,gz+Math.sin(a3)*0.12,[0.93,0.95,0.98],Math.cos(a3)*0.30,0.16,Math.sin(a3)*0.30,1.4,0.22); // snow plume
       }
     }
     if(state.bets.megapass){
@@ -2584,16 +2651,17 @@ const MountainGL = (() => {
     gl.drawArrays(gl.TRIANGLES,0,buf.count);
     drawCalls++;
   }
-  function drawUnlit(buf,mvp,mode,gain){
+  function drawUnlit(buf,mvp,mode,gain,ptSize){
     if(!buf || buf.count===0) return;
     gl.useProgram(UPROG); resetAttribs();
     gl.uniform1f(gl.getUniformLocation(UPROG,'uGain'), gain||1.0);
+    gl.uniform1f(gl.getUniformLocation(UPROG,'uPt'), ptSize||7.0);
     var pb=mkBuf(buf.pos), cb=mkBuf(buf.col);
     var aP=gl.getAttribLocation(UPROG,'aPos'), aC=gl.getAttribLocation(UPROG,'aCol');
     gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,cb); gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC,3,gl.FLOAT,false,0,0);
     gl.uniformMatrix4fv(gl.getUniformLocation(UPROG,'uMVP'),false,mvp);
-    gl.drawArrays(mode||gl.TRIANGLES,0,buf.count);
+    gl.drawArrays(mode==null?gl.TRIANGLES:mode,0,buf.count); // gl.POINTS is 0, so no || fallback here
     gl.deleteBuffer(pb); gl.deleteBuffer(cb);
     drawCalls++;
   }
@@ -2609,6 +2677,21 @@ const MountainGL = (() => {
   // hover labels: every placed prop family records a world-space hit sphere; hitTest() projects
   // them with the last frame's view-projection (no GPU picking)
   var hits=[], lastVP=null;
+  // particle emitters (chimney smoke, spa steam, fan-gun plumes): rebuilt with the static props,
+  // simulated on the CPU as one point batch (unlit, colour fades toward the fog as they age)
+  var emitters=[], particles=null, PPE=22;
+  function emit(x,y,z,col,dx,dy,dz,life,spread){ emitters.push({x:x,y:y,z:z,col:col,dx:dx,dy:dy,dz:dz,life:life,spread:spread}); }
+  function stepParticles(dt,fogCol){
+    var n=emitters.length*PPE; if(!n) return null;
+    if(!particles||particles.n!==n){ particles={n:n,age:new Float32Array(n),jit:new Float32Array(n*3),pos:new Float32Array(n*3),col:new Float32Array(n*3)};
+      for(var i=0;i<n;i++){ particles.age[i]=Math.random(); particles.jit[i*3]=Math.random()-0.5; particles.jit[i*3+1]=Math.random()-0.5; particles.jit[i*3+2]=Math.random()-0.5; } }
+    var P=particles;
+    for(var i=0;i<n;i++){ var e=emitters[Math.floor(i/PPE)]; P.age[i]+=dt/e.life; if(P.age[i]>1){ P.age[i]-=1; }
+      var a=P.age[i],w=e.spread*(0.3+a);
+      P.pos[i*3]=e.x+e.dx*a+P.jit[i*3]*w+Math.sin(a*9+i)*0.01; P.pos[i*3+1]=e.y+e.dy*a+P.jit[i*3+1]*w*0.5; P.pos[i*3+2]=e.z+e.dz*a+P.jit[i*3+2]*w;
+      var f=a*a; P.col[i*3]=e.col[0]+(fogCol[0]-e.col[0])*f; P.col[i*3+1]=e.col[1]+(fogCol[1]-e.col[1])*f; P.col[i*3+2]=e.col[2]+(fogCol[2]-e.col[2])*f; }
+    return {pos:P.pos,col:P.col,count:n};
+  }
   function hit(x,y,z,r,label){ hits.push({x:x,y:y,z:z,r:r,label:label}); }
   var state = null; // set via setState(); replaces the prototype's global STATE
   function stateSig(s){ return [s.seed,s.seat,s.snow,s.cap,s.staff,s._util,s._reachHi,s.lodgeBuilt,
@@ -2739,6 +2822,8 @@ const MountainGL = (() => {
       drawUnlit(dp.glowDiscs,mvp);
       gl.depthMask(true); gl.disable(gl.BLEND);
     }
+    var pbuf=stepParticles(dt,fogCol);
+    if(pbuf) drawUnlit(pbuf,mvp,gl.POINTS,1.0,3.0*(window.devicePixelRatio||1));
     if(state.snow==='powder'){
       for(var i=0;i<snowN;i++){ snowFlakes[i*3+1]-=dt*0.6; if(snowFlakes[i*3+1]<0) snowFlakes[i*3+1]=3.5; }
       gl.useProgram(PPROG); resetAttribs();
@@ -2821,6 +2906,7 @@ const MountainGL = (() => {
   }
   window.fpsCounter = fpsCounter; // compatibility: powder/_tools/fps-probe.mjs reads window.fpsCounter.value
   function quality(){ return QUALITY; }
+  function setReveal(d){ revealDelay = d || {}; }
   // (px,py) in CSS pixels on the canvas -> nearest labelled prop within 14 px (plus its screen radius)
   function hitTest(px,py){
     if(!lastVP || !glCanvas) return null;
@@ -2834,7 +2920,7 @@ const MountainGL = (() => {
     }
     return best;
   }
-  return { init, setState, setYaw, getYaw, render, selfTest, quality, hitTest };
+  return { init, setState, setYaw, getYaw, render, selfTest, quality, hitTest, setReveal };
 })();
 window.__selfTest = () => MountainGL.selfTest();
 // Mountain-view frame driver, called from loop() exactly like the old diorama's renderMountain():
