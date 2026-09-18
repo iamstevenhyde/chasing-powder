@@ -126,6 +126,7 @@
       <div class="row">
         <button id="btnCreate" onclick="createGame()">Create New Game</button>
         <span class="status">Draws the season's hidden world and generates a 5-letter join code.</span>
+        <label class="status" style="margin-left:12px"><input type="checkbox" id="optMultiteam"> Multi-team mode: deals between tables, acquisitions, two independent hills for sale</label>
       </div>
       <div class="row" style="margin-top:0.6rem">
         <button id="btnResume" onclick="resumeGame()" class="secondary">Resume Last Game</button>
@@ -157,6 +158,10 @@
 
   <!-- Board -->
   <section id="secBoard" style="display:none">
+    <div class="card" id="dealsCard" style="display:none">
+      <div class="row"><b>Deals this season</b> <span class="status">accepted deals settle when you resolve; proposed ones expire</span></div>
+      <div id="dealsAdmin" class="status">No deals yet this season.</div>
+    </div>
     <h2>Season in Progress <span id="boardSeason" style="font-size:0.8rem;color:var(--muted);font-weight:normal"></span></h2>
     <div class="card">
       <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.8rem">
@@ -227,7 +232,7 @@
 <!-- supabase-js v2 UMD from jsdelivr, pinned, same tag as the ranch console -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
 <script src="config.js?v=d9a9a8b126"></script>
-<script src="engine-powder.js?v=89a1a6200d"></script>
+<script src="engine-powder.js?v=c5886493aa"></script>
 <script src="recap.js?v=779a527f5f"></script>
 <script>
 'use strict';
@@ -305,14 +310,24 @@ const RIVALS = (window.PowderEngine && PowderEngine.RIVALS) || [
   { arch: 'NETWORK', name: 'Vail' },
   { arch: 'FORTRESS', name: 'Alta' },
 ];
-const SEAT_COUNT = TEAM_SEATS + RIVALS.length;
+let SEAT_COUNT = TEAM_SEATS + RIVALS.length;
 const VAIL_SEAT  = TEAM_SEATS;       // first rival seat, by RIVALS order
 const ALTA_SEAT  = TEAM_SEATS + 1;   // second rival seat, by RIVALS order
-const SEAT_ARCH  = (window.PowderEngine && typeof PowderEngine.classroomField === 'function')
+let SEAT_ARCH  = (window.PowderEngine && typeof PowderEngine.classroomField === 'function')
   ? PowderEngine.classroomField()
   : Array(TEAM_SEATS).fill('NEUTRAL').concat(RIVALS.map(r => r.arch));
 const FIXED_NAME = {};
 RIVALS.forEach((r, i) => { FIXED_NAME[TEAM_SEATS + i] = r.name; });
+// Multi-team games (2026-09-18) append independent hills after the two rivals. The roster is per
+// game (world.hills), so it is refreshed whenever WORLD is set, on create and on resume.
+const HILL_NAMES = (window.PowderEngine && PowderEngine.HILL_NAMES) || ['Bogus Basin', 'Brundage', 'Soldier Mountain', 'Pomerelle'];
+const FIRST_HILL_SEAT = TEAM_SEATS + RIVALS.length;
+function applyWorldRoster() {
+  const hills = (WORLD && WORLD.hills) || 0;
+  SEAT_COUNT = FIRST_HILL_SEAT + hills;
+  SEAT_ARCH = PowderEngine.classroomField(hills);
+  for (let k = 0; k < hills; k++) FIXED_NAME[FIRST_HILL_SEAT + k] = HILL_NAMES[k % HILL_NAMES.length];
+}
 const AI_NAMES = [
   'Powderhorn Basin', 'Tamarack Notch', 'Silver Fork', 'Juniper Pass',
   'Cinder Ridge', 'Wolf Creek Flat', 'Birch Hollow', 'Cloudsplitter',
@@ -403,6 +418,11 @@ async function createGame() {
     // stored; the instructor re-derives the trace locally with trueStageArray(env).
     inflection: envRaw.inflection, segTrace: [],
   };
+  // multi-team mode is a per-game switch: off, the room plays exactly the pre-9/18 game
+  const multi = !!((document.getElementById('optMultiteam') || {}).checked);
+  WORLD.multiteam = multi;
+  WORLD.hills = multi ? 2 : 0;
+  applyWorldRoster();
   const { data, error } = await supa.from('powder_games').insert({
     join_code: JOIN_CODE, status: 'lobby', phase: 'lobby', season: 0, world: WORLD,
   }).select().single();
@@ -427,6 +447,7 @@ async function resumeGame() {
   if (!data || !data.length) { msg('No game found to resume. Create one first.', 'err'); return; }
   const g = data[0];
   GAME_ID = g.id; JOIN_CODE = g.join_code; WORLD = g.world || {};
+  applyWorldRoster();
   CUR_SEASON = g.season || 0;
   document.getElementById('joinCodeDisplay').textContent = JOIN_CODE;
   document.getElementById('joinCodeBox').style.display = '';
@@ -466,8 +487,10 @@ async function rebuildGameState() {
   const env = { growthScale: WORLD.growthScale, chasmScale: WORLD.chasmScale, inflection: WORLD.inflection };
   GAME_STATE = PowderEngine.initGameState(SEAT_ARCH.slice(), WORLD.seed, env);
   for (let s = 0; s < CUR_SEASON; s++) {
-    const decisionsBySeat = await decisionsForSeason(s);
-    PowderEngine.stepSeason(GAME_STATE, decisionsBySeat);
+    const { bySeat } = await decisionsForSeason(s);
+    // replay reads only what actually settled, in created_at order, so it is deterministic
+    const deals = (WORLD && WORLD.multiteam) ? await dealsFor(s, 'settled') : [];
+    PowderEngine.stepSeason(GAME_STATE, bySeat, deals);
   }
 }
 
@@ -499,7 +522,7 @@ function renderLobbySeats() {
     let nameCell, noteCell;
     if (fixed) {
       nameCell = esc(fixed) + ' <span class="tag tag-ai">permanent AI</span>';
-      const rival = RIVALS[i - TEAM_SEATS] || {};
+      const rival = RIVALS[i - TEAM_SEATS] || (i >= FIRST_HILL_SEAT ? { arch: 'independent hill', note: 'small and sleepy, for sale at its listed price' } : {});
       noteCell = esc((rival.arch || '') + (rival.note ? ', ' + rival.note : ''));
     } else if (t) {
       nameCell = esc(t.name) + (t.is_ai ? ' <span class="tag tag-ai">AI</span>' : ' <span class="tag tag-human">Human</span>');
@@ -535,6 +558,9 @@ async function startGame() {
     }
     if (!claimed.has(VAIL_SEAT)) inserts.push({ game_id: GAME_ID, seat_index: VAIL_SEAT, name: 'Vail', is_ai: true, state: null });
     if (!claimed.has(ALTA_SEAT)) inserts.push({ game_id: GAME_ID, seat_index: ALTA_SEAT, name: 'Alta', is_ai: true, state: null });
+    for (let i = FIRST_HILL_SEAT; i < SEAT_COUNT; i++) {
+      if (!claimed.has(i)) inserts.push({ game_id: GAME_ID, seat_index: i, name: FIXED_NAME[i], is_ai: true, state: null });
+    }
     if (inserts.length) {
       const { error } = await supa.from('powder_teams').insert(inserts);
       if (error) { msg('Error filling seats: ' + error.message, 'err'); return; }
@@ -713,7 +739,7 @@ async function decisionsForSeason(season) {
   const bySeat = {};
   const unattended = [];
   for (const t of TEAMS) {
-    if (t.seat_index === VAIL_SEAT || t.seat_index === ALTA_SEAT) continue;
+    if (t.seat_index >= TEAM_SEATS) continue;   // rivals and independent hills: engine-driven, never in the map
     // An AI-filled seat, or a team that never locked in, is left OUT of the map on purpose.
     // A seat absent from decisionsBySeat is resolved by the engine's own NEUTRAL policy, which
     // is the single source of truth for what a generic resort does. What it chose is written to
@@ -739,7 +765,9 @@ async function resolveSeason() {
 
     const { bySeat: decisionsBySeat, unattended } = await decisionsForSeason(CUR_SEASON);
     const priorSeason = CUR_SEASON;
-    PowderEngine.stepSeason(GAME_STATE, decisionsBySeat);
+    // accepted deals settle inside the engine this season; nothing is read from 'proposed'
+    const deals = (WORLD && WORLD.multiteam) ? await dealsFor(CUR_SEASON, 'accepted') : [];
+    PowderEngine.stepSeason(GAME_STATE, decisionsBySeat, deals);
 
     // Record what the engine chose for every seat nobody drove, so the decision log is complete.
     for (const u of unattended) {
@@ -779,6 +807,7 @@ async function resolveSeason() {
     if (failed.length) msg('Warning: ' + failed.length + ' seat state write(s) failed: ' + failed[0].error.message, 'err');
     const ins = await supa.from('powder_decisions').insert(resultRows);
     if (ins.error) msg('Warning: engine_result rows failed: ' + ins.error.message, 'err');
+    if (WORLD && WORLD.multiteam) await settleDealsAfterResolve(priorSeason, deals);
 
     WORLD.segTrace = GAME_STATE.segTrace;
     // this season's weather, so the team client can narrate it (the engine does not persist it)
@@ -792,6 +821,56 @@ async function resolveSeason() {
   } finally {
     resolving = false;
   }
+}
+
+// ---------- multi-team deals (2026-09-18) ----------
+// Rows come from powder_deals (see schema-powder-deals.sql). The engine gets {seq, proposer, partner,
+// type, terms} in created_at order; seq is that rank, which is what keeps replay deterministic.
+async function dealsFor(season, status) {
+  const { data, error } = await supa.from('powder_deals').select('*')
+    .eq('game_id', GAME_ID).eq('season', season).eq('status', status).order('created_at');
+  if (error) { msg('Warning: could not load deals: ' + error.message, 'err'); return []; }
+  return (data || []).map((d, i) => ({ id: d.id, seq: i, proposer: d.proposer_seat, partner: d.partner_seat, type: d.type, terms: d.terms || {} }));
+}
+// After resolve: the applied rows become 'settled', anything still 'proposed' for that season
+// expires, AI purchases (Vail buying a hill) are written as settled rows so replay and the research
+// log see the same event the humans see, and one deal_settled decision row lands per applied deal.
+async function settleDealsAfterResolve(season, deals) {
+  const ids = deals.map(d => d.id);
+  if (ids.length) {
+    const { error } = await supa.from('powder_deals').update({ status: 'settled' }).in('id', ids);
+    if (error) msg('Warning: deal settlement write failed: ' + error.message, 'err');
+  }
+  await supa.from('powder_deals').update({ status: 'expired' }).eq('game_id', GAME_ID).eq('season', season).eq('status', 'proposed');
+  const auto = (GAME_STATE.settled || []).filter(x => x.source === 'auto');
+  if (auto.length) {
+    await supa.from('powder_deals').insert(auto.map(x => ({
+      game_id: GAME_ID, season, proposer_seat: x.buyer, partner_seat: x.target, type: 'acquire',
+      terms: { price: x.price, auto: true }, status: 'settled', turn_seat: null, history: [],
+    })));
+  }
+  const rows = deals.map(d => ({ game_id: GAME_ID, team_id: null, season, kind: 'deal_settled', payload: { proposer: d.proposer, partner: d.partner, type: d.type, terms: d.terms } }))
+    .concat(auto.map(x => ({ game_id: GAME_ID, team_id: null, season, kind: 'deal_settled', payload: { proposer: x.buyer, partner: x.target, type: 'acquire', terms: { price: x.price }, auto: true } })));
+  if (rows.length) await supa.from('powder_decisions').insert(rows);
+}
+function seatNameOf(seat) {
+  const t = TEAMS.find(x => x.seat_index === seat);
+  return t ? t.name : (FIXED_NAME[seat] || ('Seat ' + (seat + 1)));
+}
+async function refreshDealsAdmin() {
+  const card = document.getElementById('dealsCard');
+  if (!card || !WORLD || !WORLD.multiteam || !GAME_ID) return;
+  card.style.display = '';
+  const { data } = await supa.from('powder_deals').select('*').eq('game_id', GAME_ID).eq('season', CUR_SEASON).order('created_at');
+  const el = document.getElementById('dealsAdmin');
+  if (!data || !data.length) { el.textContent = 'No deals yet this season.'; return; }
+  el.innerHTML = data.map(d =>
+    `<div>${esc(seatNameOf(d.proposer_seat))} -> ${esc(seatNameOf(d.partner_seat))}: ${esc(d.type)} ${esc(JSON.stringify(d.terms || {}))} <b>${esc(d.status)}</b>`
+    + ((d.status === 'proposed' || d.status === 'accepted') ? ` <button onclick="voidDeal('${d.id}')">Void</button>` : '') + '</div>').join('');
+}
+async function voidDeal(id) {
+  await supa.from('powder_deals').update({ status: 'voided' }).eq('id', id);
+  refreshDealsAdmin();
 }
 
 // Own nearest-rival distance read (not an engine field): rivals within a fixed threshold
@@ -1035,7 +1114,7 @@ function startPolling() {
     const lobbyVisible = document.getElementById('secLobby').style.display !== 'none';
     const boardVisible = document.getElementById('secBoard').style.display !== 'none';
     if (lobbyVisible) refreshTeams();
-    if (boardVisible) refreshBoard();
+    if (boardVisible) { refreshBoard(); refreshDealsAdmin(); }
   }, POLL_MS);
 }
 </script>

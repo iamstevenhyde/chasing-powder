@@ -126,6 +126,29 @@ const CONFIG = {
                                   // mainstream price anchor once joined (dilutes pricing control)
   MEGAPASS_SPILLOVER: 0.07,        // appeal bonus to DESTFAM/DAYTRIP (the mainstream segments) once joined
   MEGAPASS_WIDTH_BONUS: 0.025,     // permanent catchment-width bonus (wide reach) once joined
+  // Mega-Pass as a consortium (2026-09-18): every Mega-Pass effect scales with how many resorts in the
+  // game hold the pass. Reach grows with the network, but so does the hub's grip on each member's
+  // price, and the product reach x (1 - dilution) FALLS with every extra member (deals-test.js case 1):
+  // the lure keeps rising while the net deal gets worse. Both helpers return exactly the old
+  // constants at one member.
+  CONSORT_REACH_SLOPE: 0.18,       // reach multiplier per extra member beyond the first
+  CONSORT_REACH_CAP: 3,            // extra members counted (reach tops out at 1 + 3*slope)
+  CONSORT_DILUTE_SLOPE: 0.14,      // price-dilution growth per extra member beyond the first
+  CONSORT_DILUTE_MAX: 0.85,        // hard ceiling on the diluted fraction
+  CONSORT_EXIT_COST: 4,            // leaving the pass costs a season of lost pass revenue
+  DEAL_MKT_WIDTH: 0.03,            // joint marketing: catchment width added to BOTH partners this season
+  DEAL_MKT_COST: 2,                // joint marketing: cash each partner pays
+  DEAL_LEASE_CAP: 10,              // capacity lease: units moved lessor -> lessee for one season
+  DEAL_LEASE_FEE_MAX: 8,           // capacity lease: ceiling on the agreed fee
+  HILL_MARKET_W: 0.45,             // an independent hill counts this much of a firm in the market size
+  ACQ_CAP_W: 0.55,                 // acquisition book value: this much per unit of the target's capacity
+  ACQ_BASE: 6,                     // independent hill ask price = ACQ_CAP_W*cap + ACQ_BASE
+  ACQ_MIN: 8,                      // floor on any agreed acquisition price
+  NEG_CASH_SEASONS: 2,             // seasons in negative cash before a table is for sale without consent
+  SCALE_MOVE_W: 0.10,              // group scale: move-fraction bonus per (groupCap/ownCap - 1)
+  SCALE_MOVE_MAX: 0.18,            // cap on that bonus
+  SCALE_CROWD_SHIELD: 0.60,        // at the cap, rival crowding bites this much less
+  AI_ACQ_CASH_FLOOR: 40,           // Vail only shops for a hill above this cash
   EXCLUSIVITY_PULL: 0.15,          // Skier-Only Exclusivity: pull toward the Core terrain/price extreme
   EXCLUSIVITY_CORE_BOOST: 0.75,   // raised 2026-09-10: at 0.28 the sever cost far outweighed the Core gain, so Alta went bankrupt in 65% of games and no student would ever take this bet    // CORE-segment appeal/fit boost (binds Core tightly)
   EXCLUSIVITY_SEVER: 0.05,         // DESTFAM appeal multiplier once bought: near-zero, the severed spillover channel
@@ -212,12 +235,23 @@ const RIVALS = [
   { arch: 'NETWORK',  name: 'Vail', note: 'the mega-pass consolidator: buys reach, dilutes its own pricing power' },
   { arch: 'FORTRESS', name: 'Alta', note: 'the committed purist: holds the Core corner and refuses the mainstream' },
 ];
-function classroomField() {
-  return Array(TEAM_SEATS).fill('NEUTRAL').concat(RIVALS.map(r => r.arch));
+// nHills (2026-09-18): optional independent hills appended AFTER the rivals, so seats 0-9 keep their
+// meaning and every existing caller (no argument) gets the same ten-firm field as before.
+const HILL_NAMES = ['Bogus Basin', 'Brundage', 'Soldier Mountain', 'Pomerelle'];
+function classroomField(nHills) {
+  return Array(TEAM_SEATS).fill('NEUTRAL').concat(RIVALS.map(r => r.arch)).concat(Array(Math.max(0, nHills || 0)).fill('COAST'));
 }
 
 function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 function dist3(a, b) { return Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2); }
+// Mega-Pass consortium scaling. n = resorts holding the pass this season (Vail always does, so n >= 1
+// whenever anyone is in). Both return the pre-consortium constants at n = 1, which is what keeps every
+// seeded parity run byte-identical when no student joins.
+function netReach(n) { return 1 + CONFIG.CONSORT_REACH_SLOPE * Math.min(Math.max(0, (n || 1) - 1), CONFIG.CONSORT_REACH_CAP); }
+function netDilute(n) {
+  const extra = Math.min(Math.max(0, (n || 1) - 1), CONFIG.CONSORT_REACH_CAP);
+  return clamp(CONFIG.MEGAPASS_PRICE_DILUTE * (1 + CONFIG.CONSORT_DILUTE_SLOPE * extra), 0, CONFIG.CONSORT_DILUTE_MAX);
+}
 
 // ---------- strategic bets (2026-07-17 engine wave) ----------
 // Five named, discrete, one-time purchasable commitments, available to the player seat and used by
@@ -393,7 +427,8 @@ function spatialMods(r) {
   // Marketing widens catchment this season only; a built lodge keeps a small permanent spillover width;
   // Mega-Pass adds a permanent wide-reach bonus on top (instant reach, per the bet's own framing).
   mods.widthBonus = Math.min(0.10, (r._spendMkt || 0) * CONFIG.MKT_WIDTH_RATE) + (r.lodgeBuilt ? 0.03 : 0)
-    + ((r.bets && r.bets.megapass) ? CONFIG.MEGAPASS_WIDTH_BONUS : 0);
+    + ((r.bets && r.bets.megapass) ? CONFIG.MEGAPASS_WIDTH_BONUS * netReach(r._consortN) : 0)
+    + (r._dealWidth || 0);
   return mods;
 }
 // lever spend -> intended facet delta (mission item 2/3). Position moves ONLY through this function.
@@ -408,15 +443,16 @@ function intendedDelta(r) {
   const d0b = eventsOn ? (0.5 - r.pos[0]) * CONFIG.EVENTS_PULL : 0;
   const d1b = eventsOn ? (0.5 - r.pos[1]) * CONFIG.EVENTS_PULL * 0.8 : 0;
   const bets = r.bets || {};
-  const megaPull = bets.megapass ? CONFIG.MEGAPASS_PULL : 0;
+  const megaPull = bets.megapass ? CONFIG.MEGAPASS_PULL * netReach(r._consortN) : 0;
   const corePull = (bets.exclusivity ? CONFIG.EXCLUSIVITY_PULL : 0) + (bets.valuesBrand ? CONFIG.VALUESBRAND_PULL : 0);
   const d0c = megaPull * (CONFIG.POS_MAIN - r.pos[0]) + corePull * (CONFIG.POS_CORE - r.pos[0]);
   const d2c = megaPull * (CONFIG.PRICE_MAIN - r.pos[2]) + corePull * (CONFIG.PRICE_CORE - r.pos[2]);
   const priceTargetRaw = clamp(r.dayPassPrice * 0.65 + r.lodgingRate * 0.35, 0, 1);
   // Mega-Pass dilutes pricing control: the firm's own price levers only partially set its priceAccess
   // target once joined, the rest is pulled toward the pass hub's mainstream price anchor.
+  const dilute = bets.megapass ? netDilute(r._consortN) : 0;
   const priceTarget = bets.megapass
-    ? priceTargetRaw * (1 - CONFIG.MEGAPASS_PRICE_DILUTE) + CONFIG.PRICE_MAIN * CONFIG.MEGAPASS_PRICE_DILUTE
+    ? priceTargetRaw * (1 - dilute) + CONFIG.PRICE_MAIN * dilute
     : priceTargetRaw;
   const d2 = (priceTarget - r.pos[2]) * CONFIG.PRICE_MOMENTUM + d2c;
   return [d0 + d0b + d0c, d1 + d1b, d2];
@@ -452,13 +488,22 @@ function resolveAxes(r, resorts, segShares, s, mods, posSnap) {
     const dRival = dist3(posSnap ? posSnap[o.i] : o.pos, target);
     if (dRival < dSelf) crowdWeight += Math.exp(-(dRival * dRival) / (2 * CONFIG.SEG_SIGMA * CONFIG.SEG_SIGMA));
   }
+  // Scale (2026-09-18): a group (a resort plus the mountains it has bought) lands nearer where it aims
+  // and is crowded less. Keyed on group-vs-own capacity, never absolute capacity, so a solo resort
+  // (groupCap null) gets exactly 0 and every seeded parity run is unchanged.
+  const scaleAdv = r._groupCap
+    ? clamp((r._groupCap / Math.max(1, r.cap) - 1) * CONFIG.SCALE_MOVE_W, 0, CONFIG.SCALE_MOVE_MAX)
+    : 0;
+  // Most of the field sits on the 0.08 floor most seasons (2026-09-18 diagnostic: 8 of 12 resorts), so
+  // scale also lifts the floor itself: a group always lands at least 0.08 + scaleAdv of its aim.
   const fraction = clamp(CONFIG.IMPERFECT_BASE + demandMass * CONFIG.IMPERFECT_DEMAND_W
-                        - crowdWeight * CONFIG.IMPERFECT_CROWD_W - dSelf * CONFIG.IMPERFECT_DIST_W, 0.08, 1);
+                        - crowdWeight * CONFIG.IMPERFECT_CROWD_W * (1 - scaleAdv * CONFIG.SCALE_CROWD_SHIELD)
+                        - dSelf * CONFIG.IMPERFECT_DIST_W + scaleAdv, 0.08 + scaleAdv, 1);
   const budget = CONFIG.MOVE_BASE + mods.moveBonus;
   const moveDist = Math.min(dSelf, budget) * fraction;
   const dir = dSelf > 1e-9 ? [(target[0]-r.pos[0])/dSelf, (target[1]-r.pos[1])/dSelf, (target[2]-r.pos[2])/dSelf] : [0,0,0];
   const realized = [dir[0]*moveDist, dir[1]*moveDist, dir[2]*moveDist];
-  return { target, realized, fraction, demandMass, crowdWeight, dist: dSelf, intended: delta };
+  return { target, realized, fraction, demandMass, crowdWeight, dist: dSelf, intended: delta, scaleAdv };
 }
 function fitTo(anchor, r) {
   const dRaw = dist3(r.pos, anchor);
@@ -530,12 +575,23 @@ function initGameState(assignment, seed, env) {
     width: 0, lodgeBuilt: false, _reachHi: 0.75, _stillSeasons: 0, _trackOutPen: 0, _dwell: 0,
     bets: { snowmaking: false, megapass: false, exclusivity: false, costRedesign: false, valuesBrand: false },
     _buyBet: null, _betSpend: 0,
+    // multi-team state (2026-09-18): all inert until a deal, acquisition or consortium is used
+    owner: null, divisions: [], isHill: false, askPrice: null, negCashRun: 0, forSale: false,
     dayPassPrice: 0.5, lodgingRate: 0.5, passMix: 0.5, price: 1.0, profit: 0,
     stageBias: (mulberry32((((seed * 131) ^ (i * 977)) >>> 0))() - 0.5) * 0.5,
     edges: [], renewSeasons: [],
     servedTotal: 0, revTotal: 0, seasonServed: [], seasonProfit: [], capSum: 0,
     built: { runs: 0, lodging: 0, events: 0, marketing: 0 },
   }));
+  // independent hills: small, sleepy, buyable at a listed price. Only seats past the two rivals qualify,
+  // so the gate harness fields (6 or 10 firms) never contain one.
+  for (const r of resorts) {
+    if (r.i < TEAM_SEATS + RIVALS.length) continue;
+    r.isHill = true;
+    r.name = HILL_NAMES[(r.i - TEAM_SEATS - RIVALS.length) % HILL_NAMES.length];
+    r.cap = CONFIG.startCap * 0.45;
+    r.askPrice = Math.round(CONFIG.ACQ_CAP_W * r.cap + CONFIG.ACQ_BASE);
+  }
   let snow = 'normal';
   const responseQueue = [];
   let prevShares = null;                 // for the segment trend trace (mission item 3)
@@ -564,6 +620,8 @@ function applyDecision(r, d) {
   r.lodgingRate   = need(price.lodge, 'price.lodge');
   r._buyBet       = d.buyBet || null;   // optional: at most one one-time bet, null is a valid answer
   r._betSpend     = 0;                  // charged by the bet block below if the bet is new
+  r._leaveBet     = d.leaveBet || null; // optional: leave the Mega-Pass consortium this season
+  r._acquire      = d.acquire == null ? null : +d.acquire;   // optional: seat of a hill or for-sale table to buy
   // labor: hire 0, 1 or 2 crews. Queued, not immediate; it starts work next season.
   r._hire         = Math.max(0, Math.min(CONFIG.HIRE_MAX, Math.round(d.hire || 0)));
   r._pendingHire  = r._hire;
@@ -575,9 +633,71 @@ function applyDecision(r, d) {
   r.cap += (r._opsCost - 8) * CONFIG.CAP_GROWTH_MULT;
 }
 
+// ---------- multi-team deals (2026-09-18) ----------
+// `deals` is the season's accepted list from the instructor console, in created_at order:
+// {seq, proposer, partner, type, terms}. Everything here is inert on an empty list. A group is a parent
+// resort plus the mountains it has bought. A bought resort keeps its seat, its mountain, its position
+// and its own decisions; only its cash and its final score fold into the parent, so nobody sits out.
+function acqPrice(target, offered) {
+  if (target.isHill) return target.askPrice;
+  const book = CONFIG.ACQ_CAP_W * target.cap + target.cash;   // negative cash: the buyer assumes the debt
+  return Math.max(CONFIG.ACQ_MIN, offered != null ? +offered : book);
+}
+function settleAcquisition(st, buyer, target, offered) {
+  if (!buyer || !target || target.owner != null || buyer.owner != null || target.i === buyer.i) return false;
+  const price = acqPrice(target, offered);
+  buyer._dealCash = (buyer._dealCash || 0) - price;         // charged through this season's profit line
+  buyer.cash += target.cash; target.cash = 0;               // balance folds up, debt included
+  target.owner = buyer.i; target.forSale = false; target.negCashRun = 0;
+  buyer.divisions.push(target.i);
+  for (const g of target.divisions) { st.resorts[g].owner = buyer.i; buyer.divisions.push(g); }
+  target.divisions = [];                                    // groups never nest
+  return true;
+}
+function applyDeals(st, deals) {
+  const { resorts } = st;
+  const byI = i => resorts.find(x => x.i === i);
+  // last season's lease reverts and the per-season deal effects reset before this season's list lands
+  for (const r of resorts) {
+    r.cap += (r._leaseOut || 0) - (r._leaseIn || 0);
+    r._leaseIn = 0; r._leaseOut = 0; r._dealWidth = 0; r._pactWith = []; r._dealCash = 0;
+  }
+  st.settled = [];
+  const list = (deals || []).slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  for (const d of list) {
+    const A = byI(d.proposer), B = byI(d.partner);
+    if (!A || !B || A.i === B.i) continue;
+    const t = d.terms || {};
+    if (d.type === 'joint_marketing') {
+      A._dealWidth += CONFIG.DEAL_MKT_WIDTH; B._dealWidth += CONFIG.DEAL_MKT_WIDTH;
+      A._dealCash -= CONFIG.DEAL_MKT_COST; B._dealCash -= CONFIG.DEAL_MKT_COST;
+    } else if (d.type === 'capacity_lease') {
+      const fee = clamp(+t.fee || 0, 0, CONFIG.DEAL_LEASE_FEE_MAX);
+      A.cap -= CONFIG.DEAL_LEASE_CAP; A._leaseOut += CONFIG.DEAL_LEASE_CAP;
+      B.cap += CONFIG.DEAL_LEASE_CAP; B._leaseIn += CONFIG.DEAL_LEASE_CAP;
+      B._dealCash -= fee; A._dealCash += fee;
+    } else if (d.type === 'nonaggression') {
+      A._pactWith.push(B.i); B._pactWith.push(A.i);
+    } else if (d.type === 'acquire') {
+      const price = acqPrice(B, t.price);
+      if (settleAcquisition(st, A, B, t.price)) st.settled.push({ type: 'acquire', buyer: A.i, target: B.i, price, source: 'deal' });
+    }
+  }
+  // consent-free purchases (a listed hill or a table two seasons in the red), from the AI or a payload
+  for (const r of resorts) {
+    if (r._acquire == null) continue;
+    const T = byI(r._acquire); r._acquire = null;
+    if (!T || !(T.isHill || T.forSale)) continue;
+    const price = acqPrice(T, null);
+    if (r.cash < price) continue;
+    if (settleAcquisition(st, r, T, null)) st.settled.push({ type: 'acquire', buyer: r.i, target: T.i, price, source: 'auto' });
+  }
+  for (const r of resorts) r._groupCap = r.divisions.length ? r.cap + r.divisions.reduce((a, i) => a + byI(i).cap, 0) : null;
+}
+
 // Resolve ONE season for the whole field. `decisionsBySeat` maps seat index -> decision payload;
 // any seat absent from the map is resolved by the scripted AI exactly as before.
-function stepSeason(st, decisionsBySeat) {
+function stepSeason(st, decisionsBySeat, deals) {
   const D = decisionsBySeat || {};
   const { resorts, env, INFL, rng, trng, responseQueue, segTrace } = st;
   let snow = st.snow, prevShares = st.prevShares;
@@ -587,7 +707,9 @@ function stepSeason(st, decisionsBySeat) {
     const rs = rng();
     if (rs > CONFIG.snowStay) snow = ['powder', 'normal', 'drought'][Math.floor(rng() * 3)];
     const snowMult = CONFIG.snow[snow];
-    const market = CONFIG.MARKET_PER_FIRM * resorts.length * cumGrowth(s, env.growthScale);
+    // an independent hill counts as a fraction of a firm; with no hills this is exactly resorts.length
+    const firmWeight = resorts.reduce((a, r) => a + (r.isHill ? CONFIG.HILL_MARKET_W : 1), 0);
+    const market = CONFIG.MARKET_PER_FIRM * firmWeight * cumGrowth(s, env.growthScale);
     const { shares: segShares, passWarBite, convertOut } = segMassShares(s, env);
     // RENEWER's macro stage-read (the only remaining use of a single scalar "core" signal): CORE's
     // share relative to the two segments RENEWER's OTHER lever (Build Lodging) could chase instead
@@ -616,14 +738,25 @@ function stepSeason(st, decisionsBySeat) {
     // and board effects show up immediately (matches the bets' own "instant" framing, e.g. Mega-Pass).
     // Idempotent: a bet already held is never re-bought or re-charged.
     for (const r of resorts) {
+      // leaving the Mega-Pass consortium: a one-season action with a real exit cost
+      if (r._leaveBet === 'megapass' && r.bets.megapass) { r.bets.megapass = false; r._betSpend = (r._betSpend || 0) + CONFIG.CONSORT_EXIT_COST; }
       if (r._buyBet && BETS[r._buyBet] && !r.bets[r._buyBet]) {
         r.bets[r._buyBet] = true;
-        r._betSpend = BETS[r._buyBet].cost;
+        r._betSpend = (r._betSpend || 0) + BETS[r._buyBet].cost;
       }
       // explicit severed-channel flag for the UI (mission item 2: "arrow goes dark"), rather than
       // making the port re-derive it from r.bets.exclusivity every render.
       r._severedSeg = r.bets.exclusivity ? 'DESTFAM' : null;
     }
+    // consortium head-count for this season (Mega-Pass scaling), read by spatialMods/intendedDelta and
+    // the appeal loop; stamped after purchases so a resort that joins this season counts this season.
+    {
+      const consortN = resorts.reduce((n, x) => n + (x.bets && x.bets.megapass ? 1 : 0), 0);
+      for (const r of resorts) r._consortN = consortN;
+    }
+    // deals and acquisitions settle before positions freeze, so leased capacity is real capacity
+    // this season and a bought mountain counts toward its parent's scale in resolveAxes
+    applyDeals(st, deals);
 
     // move resolver: levers -> intended delta -> imperfect realization (change 2/3)
     // Positions are frozen before anyone moves, so every resort is judged against the same board.
@@ -688,6 +821,7 @@ function stepSeason(st, decisionsBySeat) {
       const A = mv.r;
       if (mv.m === 'poach') {
         const T = tgt(mv); if (!T || T.i === A.i) continue;
+        if ((A._pactWith || []).includes(T.i)) continue;   // non-aggression pact: no raid between partners this season
         const eff = 0.5 * R * (1 - (T._resist || 0));
         if (coreLean(T)) { A._raidC += eff; T._raidC -= eff; } else { A._raid += eff; T._raid -= eff; }
         if (capableOf(T)) { const gap = Math.max(0, T.cash - medCash); A._warCost += 0.35 * W; T._warCost += 0.45 * W * (1 + gap * CONFIG.leadPenalty); }
@@ -695,7 +829,9 @@ function stepSeason(st, decisionsBySeat) {
       else if (mv.m === 'signal') { const T = tgt(mv); if (!T || T.i === A.i) continue; T._freeze = true; if (capableOf(T)) A.rep = Math.max(0, A.rep - 0.03); }
     }
     // (a 'signal' no longer freezes an advantage build, since bets are retired; it stays a cheap rep-tax play)
-    for (const mv of moves) { if (!needsTarget(mv.m)) continue; const A = mv.r, T = tgt(mv); if (!T || T.i === A.i) continue; const amc = amcScore(A, T, mv.m); if (amc.likely > 0.30) responseQueue.push({ responder: T.i, against: A.i, due: s + RESPONSE_DELAY[amc.kind], kind: amc.kind }); }
+    // a pact also stops a NEW retaliation being queued between partners; one already queued from an
+    // earlier season still lands (peace is bought forward, not backward)
+    for (const mv of moves) { if (!needsTarget(mv.m)) continue; const A = mv.r, T = tgt(mv); if (!T || T.i === A.i) continue; if ((A._pactWith || []).includes(T.i)) continue; const amc = amcScore(A, T, mv.m); if (amc.likely > 0.30) responseQueue.push({ responder: T.i, against: A.i, due: s + RESPONSE_DELAY[amc.kind], kind: amc.kind }); }
 
     // Cost Redesign's board expression (mission item 2): a firm paying real price-war cost this season
     // concedes some capacity (a real-world margin-pressure downsize) UNLESS it holds Cost Redesign, which
@@ -746,7 +882,7 @@ function stepSeason(st, decisionsBySeat) {
           if (seg.id === 'CORE') a *= (1 + CONFIG.VALUESBRAND_CORE_BOOST);
           else if (seg.id === 'DESTFAM' || seg.id === 'DAYTRIP') a *= (1 - CONFIG.VALUESBRAND_REPEL);
         }
-        if (bets.megapass && (seg.id === 'DESTFAM' || seg.id === 'DAYTRIP')) a *= (1 + CONFIG.MEGAPASS_SPILLOVER);
+        if (bets.megapass && (seg.id === 'DESTFAM' || seg.id === 'DAYTRIP')) a *= (1 + CONFIG.MEGAPASS_SPILLOVER * netReach(r._consortN));
         appealBySeg[seg.id].push(Math.max(0.05, a));
       }
       if (r.pos[0] >= 0.75) r.rep = Math.min(1, r.rep + 0.02);   // niche-style rep gain, unchanged, applied once per resort
@@ -831,8 +967,11 @@ function stepSeason(st, decisionsBySeat) {
       const opsCost = r._opsCost + CONFIG.OPS_CONVEX * push * push;
       const runCost = opsCost + CONFIG.fixedCost + r._payroll - (r.bets && r.bets.costRedesign ? CONFIG.COST_REDESIGN_SAVING : 0);
       const leverSpend = (r._spendRuns || 0) + (r._spendLodging || 0) + (r._spendEvents || 0) + (r._spendMkt || 0) + (r._betSpend || 0);
-      const profit = revenue - runCost - CONFIG.capCarry * r.cap - (r._repoCost || 0) - r._warCost - (r._moveCost || 0) - leverSpend;
+      const profit = revenue - runCost - CONFIG.capCarry * r.cap - (r._repoCost || 0) - r._warCost - (r._moveCost || 0) - leverSpend + (r._dealCash || 0);
       r.cash += profit; r.profit += profit;
+      // two seasons in the red and the table is for sale without consent (a division is never resold)
+      r.negCashRun = r.cash < 0 ? (r.negCashRun || 0) + 1 : 0;
+      r.forSale = r.owner == null && !r.isHill && r.negCashRun >= CONFIG.NEG_CASH_SEASONS;
       // cumulative build ledger for the team client's mountain view (display only; nothing reads it)
       if (!r.built) r.built = { runs: 0, lodging: 0, events: 0, marketing: 0 };
       r.built.runs += r._spendRuns || 0; r.built.lodging += r._spendLodging || 0;
@@ -880,6 +1019,14 @@ function finalizeGame(st) {
       coverage: liveSeasons / CONFIG.SEASONS,
       efficiency: r.score / (r.capSum / CONFIG.SEASONS + 1),
     };
+  }
+  // groups (2026-09-18): a parent's standing is its own score plus its divisions'. Each division keeps
+  // its own score and scorecard for the debrief; insolvency stays per resort, so a parent that bought a
+  // distressed table is still charged for the debt it took on.
+  for (const r of resorts) {
+    if (r.owner != null || !r.divisions.length) { r.groupScore = null; r.groupMembers = null; continue; }
+    r.groupMembers = [r.i, ...r.divisions];
+    r.groupScore = r.groupMembers.reduce((a, i) => a + resorts[i].score, 0);
   }
   scoreField(resorts);
   // felt lifecycle (mission item 3): per-season, per-segment mass/delta/trend trace, attached to the
@@ -956,6 +1103,7 @@ function decide(r, s, inflected, core, resorts) {
   r._opsCost = 8;
   r._spendRuns = 0; r._spendLodging = 0; r._spendEvents = 0; r._spendMkt = 0;
   r._buyBet = null; r._betSpend = 0;   // reset each season; a policy below may set r._buyBet once
+  r._leaveBet = null; r._acquire = null;
   const readCore = core + r.stageBias;   // the hidden stage, read with a per-game bias (sometimes wrong)
   if (A === 'RENEWER') {                 // ADAPTIVE CHASER: reads the sweet spot; spikes hard on a confident read,
     r.cap = Math.min(r.cap, 79); r._opsCost = 8;   // plays cheap and waits when the read is murky (variance/spike fix for G7)
@@ -1008,6 +1156,12 @@ function decide(r, s, inflected, core, resorts) {
     r._spendMkt = s >= 2 ? 5 : 2;
     r.dayPassPrice = 0.62; r.lodgingRate = 0.78;
     if (s === 0 && !r.bets.megapass) r._buyBet = 'megapass';   // instant wide reach, matches the empire-builder's identity
+    // the consolidator shops for an independent hill once, mid-game, when it can afford one (never fires
+    // in a field without hills, so the gate harness is untouched)
+    if (s === 3 && r.cash > CONFIG.AI_ACQ_CASH_FLOOR && r.owner == null) {
+      const h = (resorts || []).filter(x => x.isHill && x.owner == null).sort((a, b) => a.askPrice - b.askPrice)[0];
+      if (h && h.askPrice < r.cash * 0.5) r._acquire = h.i;
+    }
   } else if (A === 'VOLUME') {           // EVENT PROMOTER: steady Summer Events spend every season, generalist
     r._opsCost = 10;                     // mid-position; the smoothed revenue floor is the whole strategy
     r._spendEvents = 6;
@@ -1074,6 +1228,12 @@ if (typeof window !== 'undefined') {
     intendedDelta,
     resolveAxes,
     fitTo,
+    netReach,
+    netDilute,
+    applyDeals,
+    acqPrice,
+    settleAcquisition,
+    HILL_NAMES,
     TEAM_SEATS,
     RIVALS,
     classroomField,
@@ -1106,6 +1266,12 @@ if (typeof window !== 'undefined') {
     intendedDelta,
     resolveAxes,
     fitTo,
+    netReach,
+    netDilute,
+    applyDeals,
+    acqPrice,
+    settleAcquisition,
+    HILL_NAMES,
     TEAM_SEATS,
     RIVALS,
     classroomField,
