@@ -969,13 +969,28 @@ function labelWidth(ctx, text, fontPx, bold){
 }
 // x/y is always the left-edge draw position (ctx.textAlign stays the default 'left'); the
 // left/up-left/down-left candidates below already subtract the width so text sits flush left
-// of the sphere instead of running back over it.
-function labelRectAt(x, y, w){
-  return { x0: x, y0: y - 10, x1: x + w, y1: y + 3 };
+// of the sphere instead of running back over it. extendUp/extendDown widen the reserved box past
+// the name alone, for firms that also draw "still N" (dy -9) and/or "lodge open"/bet badges
+// (dy +16/+28) off the same anchor -- those lines move with the name but were never reserved for,
+// so a neighbour's name could land right on top of them (only visible once seats start earning
+// badges, from season 3 on; season 1 has none).
+function labelRectAt(x, y, w, extendUp, extendDown){
+  return { x0: x, y0: y - (extendUp ? 19 : 10), x1: x + w, y1: y + (extendDown ? 31 : 3) };
 }
 function placeFirmLabels(drawables, ctx, boardW, boardH){
   const MARGIN = 4;
   const placed = [];
+  // Seed the three static axis captions too (TERRAIN CHALLENGE / COMFORT-AMENITIES / PRICE
+  // POSITION): drawAxisLine (chasing-powder-3d.html ~line 1343) draws these once per frame outside
+  // the drawables loop, at a fixed projected position, and this reproduces that exact projection
+  // and offset (p1.sx+6, p1.sy, 10px CANVAS_MONO) rather than guessing -- drawAxisLine itself is
+  // untouched.
+  ctx.font = '10px ' + CANVAS_MONO;
+  [[1,0,0], [0,1,0], [0,0,1]].forEach((dir, k) => {
+    const p1 = project(toWorld([0.5+dir[0]*0.55, 0.5+dir[1]*0.55, 0.5+dir[2]*0.55]), cam);
+    const text = AXES[k].name.toUpperCase();
+    placed.push(labelRectAt(p1.sx + 6, p1.sy, ctx.measureText(text).width));
+  });
   // Seed with every drawn disc (firm spheres AND segment clouds) plus every segment caption, so a
   // label can never be chosen on top of a sphere or cloud -- the discs paint in depth order, which
   // does not match label placement order, so a later sphere could otherwise cover an earlier label.
@@ -1006,7 +1021,22 @@ function placeFirmLabels(drawables, ctx, boardW, boardH){
   order.forEach(d => {
     const f = d.firm, bold = !!f.isPlayer;
     const text = (bold ? 'YOU: ' : '') + nameOf(f);
-    const w = labelWidth(ctx, text, bold ? 12 : 11, bold);
+    let w = labelWidth(ctx, text, bold ? 12 : 11, bold);
+    // the extra lines a firm draws off the same anchor (see labelRectAt above): widen the
+    // reservation to whichever of name/still/lodge/badges is widest, and extend it to cover
+    // whichever of those lines this firm will actually draw.
+    const hasStill = (f._stillSeasons || 0) >= 1;
+    const ownedBets = f.bets ? Object.keys(BETS).filter(k => f.bets[k]) : [];
+    const hasBadges = ownedBets.length > 0;
+    const hasLodge = !!f.lodgeBuilt;
+    const extendDown = hasLodge || hasBadges;
+    if (hasStill) { ctx.font = '9px ' + CANVAS_MONO; w = Math.max(w, ctx.measureText('still ' + f._stillSeasons).width); }
+    if (hasLodge) { ctx.font = '9px ' + CANVAS_MONO; w = Math.max(w, ctx.measureText('lodge open').width); }
+    if (hasBadges) {
+      ctx.font = '9px ' + CANVAS_MONO;
+      const badgeStr = ownedBets.map(k => BET_BADGES[k] || k[0].toUpperCase()).join(' ');
+      w = Math.max(w, ctx.measureText(badgeStr).width);
+    }
     const cx = d.p.sx, cy = d.p.sy, rad = d.r, off = rad + 4;
     const baseX = cx + off, baseY = cy + 4; // the original always-right anchor; offsets below are measured from here
     const candidates = [
@@ -1021,7 +1051,7 @@ function placeFirmLabels(drawables, ctx, boardW, boardH){
     ];
     let chosen = null;
     for (const c of candidates) {
-      const rect = labelRectAt(c.x, c.y, w);
+      const rect = labelRectAt(c.x, c.y, w, hasStill, extendDown);
       if (inBounds(rect) && !placed.some(p => rectsOverlap(p, rect, 2))) { chosen = { x: c.x, y: c.y, rect, leader: false }; break; }
     }
     if (!chosen) {
@@ -1041,7 +1071,7 @@ function placeFirmLabels(drawables, ctx, boardW, boardH){
         const ca = Math.cos(angle), sa = Math.sin(angle);
         const px = cx + ca * dist, py = cy + sa * dist + 4;
         const x = ca > 0.35 ? px : (ca < -0.35 ? px - w : px - w/2);
-        const rect = labelRectAt(x, py, w);
+        const rect = labelRectAt(x, py, w, hasStill, extendDown);
         last = { x, y: py, rect, leader: true, lx0: cx + ca*rad, ly0: cy + sa*rad };
         if (inBounds(rect) && !placed.some(p => rectsOverlap(p, rect, 2))) { chosen = last; break; }
       }
@@ -1054,7 +1084,7 @@ function placeFirmLabels(drawables, ctx, boardW, boardH){
         if (last.rect.x1 > boardW - MARGIN) x -= last.rect.x1 - (boardW - MARGIN);
         if (last.rect.y0 < MARGIN) y += MARGIN - last.rect.y0;
         if (last.rect.y1 > boardH - MARGIN) y -= last.rect.y1 - (boardH - MARGIN);
-        chosen = { ...last, x, y, rect: labelRectAt(x, y, w) };
+        chosen = { ...last, x, y, rect: labelRectAt(x, y, w, hasStill, extendDown) };
       }
     }
     placed.push(chosen.rect);
