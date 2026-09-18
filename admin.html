@@ -203,6 +203,14 @@
     <h2>End-of-Game Debrief</h2>
 
     <div class="debrief-card">
+      <div class="debrief-title">0. The AI Clockspeed Shift</div>
+      <div class="debrief-note">The season broad AI access landed on every resort at once, and what it did to the
+        rate at which a held position goes stale. Every team saw this named in its own season log the season it
+        happened, and this is the room-level version of that same event.</div>
+      <div id="debriefInflection"></div>
+    </div>
+
+    <div class="debrief-card">
       <div class="debrief-title">1. Stage-Read Scorecard</div>
       <div class="debrief-note">Each team's guessed industry stage against the hidden true stage, season by
         season. The true stage is derived from the game's own segment lifecycle, not a fixed season number, so a
@@ -290,6 +298,12 @@
 //    locally by trueStageTrace(). Residual risk: a student with the engine
 //    could re-derive it from the stored env draw, which is a far higher bar
 //    than reading an array out of a public row.
+// 6c. TIGHTENED 2026-09-18 (persona audit item 3): the live instructor dashboard
+//    used to print "off, it was mature" and a running accuracy tally beside each
+//    team's read, every season, on the projector. trueStageTrace() is now called
+//    from renderStageScorecard() alone, which only runs in the end-of-game
+//    debrief. The live card shows the reads and the room's split and nothing
+//    about who was right.
 // 6b. The rest of games.world is read
 //    by anyone holding the anon key, same as every other powder_ column
 //    (schema-powder.sql's RLS is permissive by design for the classroom
@@ -934,24 +948,28 @@ function renderDashboard(submittedMap) {
   // The stage read is graded on the last RESOLVED season: a guess for the season now open cannot
   // be scored until it resolves, and a projector card that said "no guess yet" all through the
   // board phase told the instructor nothing. STAGE_GUESSES is filled by loadStageGuesses().
-  const trace = trueStageTrace();
+  // Stage feedback is END-ONLY (2026-09-18 persona audit, item 3). This dashboard runs on the
+  // projector with the room watching, so it used to answer the stage question out loud every
+  // season ("off, it was mature") while the teams were still being asked to read it. The truth
+  // and the running accuracy tally now live in the debrief alone. What stays here is what the
+  // instructor can actually use mid-game without giving the answer away: who read what, and how
+  // split the room is, which is how you pick the two tables to put against each other.
   const graded = CUR_SEASON - 1;
-  const trueStage = graded >= 0 ? (trace[graded] || null) : null;
   const floor = (window.PowderEngine && PowderEngine.CONFIG.retaliateFloor) || 35;
   const rows = TEAMS.filter(t => t.seat_index < SEAT_COUNT).sort((a, b) => a.seat_index - b.seat_index);
 
+  const tally = { growth: 0, shakeout: 0, mature: 0 };
   const stageRows = rows.filter(t => !t.is_ai).map(t => {
     const hist = STAGE_GUESSES[t.id] || {};
     const guess = graded >= 0 ? hist[graded] : null;
-    const correct = guess && trueStage && guess === trueStage;
-    let hits = 0, n = 0;
-    for (let k = 0; k <= graded; k++) { if (hist[k]) { n++; if (hist[k] === trace[k]) hits++; } }
+    if (guess && tally[guess] != null) tally[guess]++;
     const cur = submittedMap.get(t.id);
-    const pending = cur && cur.stageGuess ? ' (this season: ' + esc(cur.stageGuess) + ')' : '';
-    return `<tr><td>${esc(t.name)}</td><td>${guess ? esc(guess) : '<em>no read</em>'}${pending}</td>` +
-      `<td class="${guess ? (correct ? 'dash-ok' : 'dash-bad') : ''}">${guess ? (correct ? 'correct' : 'off, it was ' + esc(trueStage)) : '-'}` +
-      `${n ? ' <span style="color:var(--dim)">' + hits + '/' + n + ' so far</span>' : ''}</td></tr>`;
+    const pending = cur && cur.stageGuess ? esc(cur.stageGuess) : null;
+    const changed = guess && pending && pending !== guess;
+    return `<tr><td>${esc(t.name)}</td><td>${guess ? esc(guess) : '<em>no read</em>'}</td>` +
+      `<td>${pending ? pending + (changed ? ' <span style="color:var(--rust)">(changed)</span>' : '') : '<em>not in yet</em>'}</td></tr>`;
   }).join('');
+  const spread = Object.keys(tally).filter(k => tally[k]).map(k => k + ' ' + tally[k]).join(', ');
 
   const warRows = rows.filter(t => t.state && (t.state._warCost || 0) > 0)
     .map(t => `<tr><td>${esc(FIXED_NAME[t.seat_index] || t.name)}</td><td>${Number(t.state._warCost).toFixed(1)}</td></tr>`).join('');
@@ -981,8 +999,9 @@ function renderDashboard(submittedMap) {
   el.innerHTML =
     `<div class="dash-grid">` +
       `<div class="dash-card"><div class="dash-title">Stage read${graded >= 0 ? ' (season ' + (graded + 1) + ', resolved)' : ' (nothing resolved yet)'}</div>` +
-        `<table class="dash-table"><thead><tr><th>Team</th><th>Guess</th><th>Result</th></tr></thead>` +
-        `<tbody>${stageRows || '<tr><td colspan="3"><em>no human teams</em></td></tr>'}</tbody></table></div>` +
+        `<table class="dash-table"><thead><tr><th>Team</th><th>Last read</th><th>This season</th></tr></thead>` +
+        `<tbody>${stageRows || '<tr><td colspan="3"><em>no human teams</em></td></tr>'}</tbody></table>` +
+        `<div style="margin-top:0.5rem;font-size:0.85rem;color:var(--dim)">Room split: ${spread || 'no reads in yet'}. Whether they were right is held back for the debrief, on purpose, so this card can stay on the projector.</div></div>` +
       `<div class="dash-card"><div class="dash-title">In a price war</div>` +
         `<table class="dash-table"><thead><tr><th>Team</th><th>War cost</th></tr></thead>` +
         `<tbody>${warRows || '<tr><td colspan="2"><em>none</em></td></tr>'}</tbody></table></div>` +
@@ -1005,9 +1024,27 @@ async function renderDebrief() {
     .in('kind', ['season_submitted', 'engine_result']).order('season');
   const SEASONS = (window.PowderEngine && PowderEngine.CONFIG.SEASONS) || 6;
 
+  renderInflection(SEASONS);
   renderStageScorecard(TEAMS, allDecs || [], SEASONS);
   renderMovementLedger(TEAMS, allDecs || [], SEASONS);
   renderFinalStandings(TEAMS);
+}
+
+// AI clockspeed (2026-09-18 persona audit, item 2). The world's inflection season is read off the
+// same env the engine resolved against, so this line cannot disagree with what the teams were told.
+function renderInflection(SEASONS) {
+  const el = document.getElementById('debriefInflection');
+  if (!el) return;
+  const C = window.PowderEngine && PowderEngine.CONFIG;
+  const infl = (WORLD && WORLD.inflection != null) ? WORLD.inflection : (C ? C.INFLECTION : null);
+  if (infl == null || !C) { el.innerHTML = '<em>world not loaded</em>'; return; }
+  const mult = C.inflectionDecayMult;
+  el.innerHTML = `<table class="debrief-table"><tbody>` +
+    `<tr><td>Season broad AI access landed</td><td><b>Season ${infl + 1} of ${SEASONS}</b></td></tr>` +
+    `<tr><td>What changed</td><td>Track-out decay ran <b>${mult.toFixed(1)}x</b> faster for every resort at once</td></tr>` +
+    `<tr><td>What did not change</td><td>Nobody got the tools first, so the access itself was worth nothing</td></tr>` +
+    `</tbody></table>` +
+    `<div class="debrief-note" style="margin-top:0.8rem;margin-bottom:0">From season ${infl + 1} on, holding a position cost roughly ${mult.toFixed(1)} times as much fit per idle season as it did before. The teams that kept moving after this point are the ones to ask about first.</div>`;
 }
 
 function renderStageScorecard(teams, allDecs, SEASONS) {

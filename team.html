@@ -195,6 +195,11 @@
     cursor:pointer;display:block;margin:0 auto;}
   #stepDots .dot.on{background:var(--gold);border-color:var(--gold);}
   #stepDots .dotLabel{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;}
+  #stepDots .turnBadge{font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;
+    color:#1b1205;background:var(--gold);border-radius:8px;padding:2px 6px;line-height:1.3;
+    box-shadow:0 0 0 0 rgba(224,182,91,.75);animation:turnPulse 1.9s ease-out infinite;}
+  @keyframes turnPulse{0%{box-shadow:0 0 0 0 rgba(224,182,91,.7);}70%{box-shadow:0 0 0 7px rgba(224,182,91,0);}100%{box-shadow:0 0 0 0 rgba(224,182,91,0);}}
+  @media (prefers-reduced-motion: reduce){#stepDots .turnBadge{animation:none;}}
   .stepPane{flex:1 1 auto;overflow-y:auto;padding:12px 14px;min-height:0;}
   .stepPane[hidden]{display:none;}
   #stepNav{flex:0 0 auto;display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);}
@@ -225,6 +230,12 @@
   #mtnLogPanel .ln.market{color:var(--gold);}
   #mtnLogPanel .ln.contest{color:#d9a3cf;}
   #mtnLogPanel .ln.weather{color:#9db8d9;}
+  #legendOverlay .loRow{display:flex;align-items:baseline;gap:8px;margin:10px 0;font-size:13px;line-height:1.5;color:var(--text);}
+  #legendOverlay .loMark{flex:0 0 20px;text-align:center;font-size:15px;color:var(--text);}
+  #legendOverlay .loBtns{display:flex;gap:10px;margin-top:16px;}
+  #legendOverlay .loBtns button{width:auto;flex:1;margin-top:0;}
+  #legendOverlay #legendSkip{background:var(--panel2);border:1px solid var(--line2);color:var(--dim);}
+  #legendOverlay #legendSkip:hover{filter:none;border-color:var(--gold);color:var(--text);}
 .lever .t .lico{width:30px;height:30px;vertical-align:middle;margin:-6px 6px -4px 0;image-rendering:auto}
 #mtnTip{position:absolute;display:none;pointer-events:none;z-index:6;font-size:12px;line-height:1.35;color:var(--text);background:rgba(10,24,29,.94);border:1px solid var(--gold);border-radius:6px;padding:4px 9px;max-width:250px;transform:translate(-50%,-115%)}
 #mtnKeyBtn.off{opacity:.55}
@@ -392,6 +403,22 @@
       <li><b>Score</b>: cumulative economic value at the end of season 6. Cash on hand is not the score.</li>
     </ul>
     <button id="introClose">To the board</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="legendOverlay">
+  <div class="card">
+    <h2>How to read your board</h2>
+    <p>This looks busy at first, but the whole board runs on five signals, and each one stays visible while you play.</p>
+    <div class="loRow"><span class="loMark" style="color:var(--gold)">&#9679;</span> Every sphere on the board marks one resort's position on the three axes, and the sphere labeled YOU is yours to watch.</div>
+    <div class="loRow"><span class="loMark" style="color:var(--teal)">&#9711;</span> The soft clouds behind the spheres show where buyers actually are, so a larger cloud means more demand sitting in that spot.</div>
+    <div class="loRow"><span class="loMark">&#8901;&#8901;&#8901;</span> A dotted arrow is the move you aim for, and a solid arrow in your color shows where the market actually placed you once the season resolves.</div>
+    <div class="loRow"><span class="loMark" style="opacity:.5">&#9711;</span> A faded sphere marks track-out decay, which is a position gone stale because nothing there has moved for a while, and holding still carries a cost even when the season looks quiet.</div>
+    <div class="loRow"><span class="loMark" style="color:var(--gold)">&#9645;</span> The Growth, Shakeout and Mature buttons under the board are your own read on where the industry sits, and that read is graded separately at the debrief.</div>
+    <div class="loBtns">
+      <button id="legendSkip" type="button">Skip</button>
+      <button id="legendGotIt" type="button">Got it</button>
+    </div>
   </div>
 </div>
 
@@ -759,6 +786,8 @@ function render(){
 
   drawables.sort((a,b)=> a.depth-b.depth);
 
+  const firmLabelPlacements = placeFirmLabels(drawables, ctx, w, h);
+
   drawables.forEach(d=>{
     if (d.type==='seg'){
       const seg = d.seg;
@@ -861,24 +890,29 @@ function render(){
       }
       ctx.fillStyle = MAP_THEME.firmLabel;
       ctx.font = f.isPlayer? ('bold 12px '+CANVAS_BODY):('11px '+CANVAS_BODY);
-      const stackN = drawables.filter(o => o.type==='firm' && o.firm.i < f.i && Math.hypot(o.p.sx-d.p.sx, o.p.sy-d.p.sy) < 10).length;
-      ctx.fillText((f.isPlayer?'YOU: ':'')+nameOf(f), d.p.sx+d.r+4, d.p.sy+4 + stackN*12);
+      const lp = firmLabelPlacements.get(f.i) || {dx:0, dy:0, leader:false};
+      if (lp.leader) {
+        ctx.save(); ctx.strokeStyle = MAP_THEME.axis; ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(lp.lx0, lp.ly0); ctx.lineTo(lp.lx1, lp.ly1); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.fillText((f.isPlayer?'YOU: ':'')+nameOf(f), d.p.sx+d.r+4+lp.dx, d.p.sy+4+lp.dy);
       // bet ownership badges: short glyph tags next to the firm label, one per owned bet.
       if (f.bets) {
         const owned = Object.keys(BETS).filter(k => f.bets[k]);
         if (owned.length) {
           ctx.font = '9px '+CANVAS_MONO; ctx.fillStyle = MAP_THEME.key==='paper' ? 'rgba(169,121,31,0.95)' : 'rgba(216,168,63,0.9)';
           const badgeStr = owned.map(k => BET_BADGES[k] || k[0].toUpperCase()).join(' ');
-          ctx.fillText(badgeStr, d.p.sx+d.r+4, d.p.sy+28);
+          ctx.fillText(badgeStr, d.p.sx+d.r+4+lp.dx, d.p.sy+28+lp.dy);
         }
       }
       if (f._stillSeasons >= 1){
         ctx.font = '9px '+CANVAS_MONO; ctx.fillStyle = 'rgba(224,90,80,0.9)';
-        ctx.fillText('still '+f._stillSeasons, d.p.sx+d.r+4, d.p.sy-9);
+        ctx.fillText('still '+f._stillSeasons, d.p.sx+d.r+4+lp.dx, d.p.sy-9+lp.dy);
       }
       if (f.lodgeBuilt){
         ctx.font = '9px '+CANVAS_MONO; ctx.fillStyle = MAP_THEME.key==='paper' ? 'rgba(37,102,111,0.95)' : 'rgba(90,167,176,0.9)';
-        ctx.fillText('lodge open', d.p.sx+d.r+4, d.p.sy+16);
+        ctx.fillText('lodge open', d.p.sx+d.r+4+lp.dx, d.p.sy+16+lp.dy);
       }
 
       if (f.isPlayer && pendingGhostTarget){
@@ -917,6 +951,119 @@ function loop(){ if (BOARD_VIEW === 'mountain') renderMountain(); else render();
 const SEAT_COLORS = ['#e56a1c','#2f8a94','#e0b65b','#c9412a','#3f6fa8','#4a8a3c','#b94f9a','#8a6a3a','#5fb0d6','#d64f63','#9a9a8c','#7d8b8f'];   // last two: independent hills
 function firmColor(f){ return SEAT_COLORS[f.i % SEAT_COLORS.length]; }
 function nameOf(f){ const t = TEAM_BY_SEAT[f.i]; return t ? t.name : 'Seat ' + (f.i + 1); }
+
+// ==========================================================================
+// ---- firm label placement (persona audit fix item 6, 2026-09-18) ----
+// ==========================================================================
+// In season 1 every seat starts from the same point, so up to ten firm labels pile into one
+// unreadable column at the centre of the board. This runs once per frame, right after drawables
+// are depth-sorted and before anything is drawn, and hands back where each firm's label block
+// (name, bet badges, "still N", "lodge open") should sit so none of them overlap each other or
+// the segment captions drawn behind the firms.
+function rectsOverlap(a, b, pad){
+  return !(a.x1 + pad < b.x0 || b.x1 + pad < a.x0 || a.y1 + pad < b.y0 || b.y1 + pad < a.y0);
+}
+function labelWidth(ctx, text, fontPx, bold){
+  ctx.font = (bold ? 'bold ' : '') + fontPx + 'px ' + CANVAS_BODY;
+  return ctx.measureText(text).width;
+}
+// x/y is always the left-edge draw position (ctx.textAlign stays the default 'left'); the
+// left/up-left/down-left candidates below already subtract the width so text sits flush left
+// of the sphere instead of running back over it.
+function labelRectAt(x, y, w){
+  return { x0: x, y0: y - 10, x1: x + w, y1: y + 3 };
+}
+function placeFirmLabels(drawables, ctx, boardW, boardH){
+  const MARGIN = 4;
+  const placed = [];
+  // Seed with every drawn disc (firm spheres AND segment clouds) plus every segment caption, so a
+  // label can never be chosen on top of a sphere or cloud -- the discs paint in depth order, which
+  // does not match label placement order, so a later sphere could otherwise cover an earlier label.
+  drawables.forEach(d => {
+    if (d.type === 'seg') {
+      placed.push({ x0: d.center.sx - d.r, y0: d.center.sy - d.r, x1: d.center.sx + d.r, y1: d.center.sy + d.r });
+      const text = d.seg.name + ' (' + (d.seg.mass * 100).toFixed(0) + '%)';
+      const w = labelWidth(ctx, text, 11, false);
+      placed.push(labelRectAt(d.center.sx - d.r*0.6, d.center.sy - d.r - 5, w));
+    } else {
+      // matches the rr the sphere itself is actually drawn at (decay + perspective scale2d), not
+      // the pre-scale d.r candidates below are measured from.
+      const decay = clamp01(1 - (d.firm._trackOutPen || 0));
+      const rr = d.r * Math.max(0.6, decay) * d.p.scale2d;
+      placed.push({ x0: d.p.sx - rr, y0: d.p.sy - rr, x1: d.p.sx + rr, y1: d.p.sy + rr });
+    }
+  });
+  const inBounds = rect => rect.x0 >= MARGIN && rect.x1 <= boardW - MARGIN && rect.y0 >= MARGIN && rect.y1 <= boardH - MARGIN;
+  const firms = drawables.filter(d => d.type === 'firm');
+  // priority: the player first, then the two named rivals (Vail/Alta), then everyone else. Once
+  // a rectangle is placed it is fixed, so lower-priority labels route around higher-priority ones.
+  const rank = d => d.firm.isPlayer ? 0 : ((d.firm.arch === 'NETWORK' || d.firm.arch === 'FORTRESS') ? 1 : 2);
+  const order = firms.slice().sort((a, b) => rank(a) - rank(b) || a.firm.i - b.firm.i);
+  const result = new Map();
+  let fallbackN = 0; // shared across every firm that overflows below, so a spiral keeps advancing
+  // outward instead of every overflowing firm restarting from the same first ring/spoke and
+  // colliding with each other where the last one landed.
+  order.forEach(d => {
+    const f = d.firm, bold = !!f.isPlayer;
+    const text = (bold ? 'YOU: ' : '') + nameOf(f);
+    const w = labelWidth(ctx, text, bold ? 12 : 11, bold);
+    const cx = d.p.sx, cy = d.p.sy, rad = d.r, off = rad + 4;
+    const baseX = cx + off, baseY = cy + 4; // the original always-right anchor; offsets below are measured from here
+    const candidates = [
+      { x: cx + off,          y: cy + 4 },        // right (original spot)
+      { x: cx - off - w,      y: cy + 4 },        // left
+      { x: cx - w/2,          y: cy - rad - 8 },  // above
+      { x: cx - w/2,          y: cy + rad + 16 }, // below
+      { x: cx + off*0.7,      y: cy - rad - 4 },  // up-right diagonal
+      { x: cx - off*0.7 - w,  y: cy - rad - 4 },  // up-left diagonal
+      { x: cx + off*0.7,      y: cy + rad + 12 }, // down-right diagonal
+      { x: cx - off*0.7 - w,  y: cy + rad + 12 }, // down-left diagonal
+    ];
+    let chosen = null;
+    for (const c of candidates) {
+      const rect = labelRectAt(c.x, c.y, w);
+      if (inBounds(rect) && !placed.some(p => rectsOverlap(p, rect, 2))) { chosen = { x: c.x, y: c.y, rect, leader: false }; break; }
+    }
+    if (!chosen) {
+      // Nothing free and on-canvas in the 8 near slots (a crowded coincident cluster can burn
+      // through all of them on spheres/clouds/captions alone). Walk a many-spoke spiral outward
+      // around the sphere instead of one fixed ray: fallbackN keeps advancing across every firm
+      // that lands here, so the 2nd, 3rd, 4th... overflowing firm each claim a new ring/spoke
+      // rather than all converging on wherever the 1st one's ray finally cleared. A candidate that
+      // would run off the canvas is skipped like any other collision, never accepted mid-search;
+      // only the very last try (exhausted) clamps into view, so a label is never lost off-screen.
+      const SPOKES = 12, MAX_TRIES = 120;
+      let last = null;
+      for (let tries = 0; tries < MAX_TRIES; tries++, fallbackN++) {
+        const ring = Math.floor(fallbackN / SPOKES) + 1;
+        const angle = (fallbackN % SPOKES) * (2 * Math.PI / SPOKES);
+        const dist = off + ring * 20;
+        const ca = Math.cos(angle), sa = Math.sin(angle);
+        const px = cx + ca * dist, py = cy + sa * dist + 4;
+        const x = ca > 0.35 ? px : (ca < -0.35 ? px - w : px - w/2);
+        const rect = labelRectAt(x, py, w);
+        last = { x, y: py, rect, leader: true, lx0: cx + ca*rad, ly0: cy + sa*rad };
+        if (inBounds(rect) && !placed.some(p => rectsOverlap(p, rect, 2))) { chosen = last; break; }
+      }
+      if (!chosen) {
+        // exhausted the spiral: clamp the last try fully inside the canvas rather than lose it off
+        // the edge; it may still brush something in this worst case, but it stays on-screen and
+        // readable, and it keeps its leader line back to the sphere.
+        let { x, y } = last;
+        if (last.rect.x0 < MARGIN) x += MARGIN - last.rect.x0;
+        if (last.rect.x1 > boardW - MARGIN) x -= last.rect.x1 - (boardW - MARGIN);
+        if (last.rect.y0 < MARGIN) y += MARGIN - last.rect.y0;
+        if (last.rect.y1 > boardH - MARGIN) y -= last.rect.y1 - (boardH - MARGIN);
+        chosen = { ...last, x, y, rect: labelRectAt(x, y, w) };
+      }
+    }
+    placed.push(chosen.rect);
+    result.set(f.i, chosen.leader
+      ? { dx: chosen.x - baseX, dy: chosen.y - baseY, leader: true, lx0: chosen.lx0, ly0: chosen.ly0, lx1: chosen.x, ly1: chosen.y }
+      : { dx: chosen.x - baseX, dy: chosen.y - baseY, leader: false });
+  });
+  return result;
+}
 
 // ==========================================================================
 // ---- shared-game state ----
@@ -1141,6 +1288,12 @@ async function onNewSeason(){
 // elsewhere, so the same teaching beats are read off the resolved state after the fact.
 function narrateSeason(p, s, worldOnly){
   const lines = [];
+  // AI clockspeed (2026-09-18 persona audit, item 2). The mechanic has always been here
+  // (inflected = s >= env.inflection, which multiplies track-out decay by inflectionDecayMult),
+  // and week 5 promises it out loud, but nothing on screen ever named the season it landed. This
+  // is a world event, so it narrates on a rejoin replay too, and it fires on that season alone.
+  const INFL = GAME.world.inflection == null ? CONFIG.INFLECTION : GAME.world.inflection;
+  if (s === INFL) lines.push({ cls:'gate', text: 'AI access broke open this season. Every resort in the valley got the same planning tools at once, nobody held an edge on the tooling itself, and the clock now runs about ' + CONFIG.inflectionDecayMult.toFixed(1) + 'x faster: a position you are not actively moving goes stale that much sooner from here on.' });
   const snow = (GAME.world.snowTrace || [])[s];
   if (snow) lines.push({ cls:'weather', text: 'Weather: ' + snow + (snow !== 'normal' ? ' (yield x' + CONFIG.snow[snow].toFixed(2) + ' on the weather-exposed share of demand)' : '') + '.' });
   if (!worldOnly && snow === 'drought' && (p._spendEvents || 0) > 0) lines.push({ cls:'weather', text: 'Drought hedge: your Summer Events revenue paid out at x' + CONFIG.EVENTS_DROUGHT_MULT.toFixed(2) + ' this season.' });
@@ -1149,7 +1302,26 @@ function narrateSeason(p, s, worldOnly){
   if (worldOnly) { /* per-resort state for a past season is not available after a rejoin */ }
   else if (p.lodgeBuilt && !prevMe) lines.push({ cls:'gate', text: 'Gate unlocked: Lodging is built. Your comfort ceiling is no longer capped, so the high-comfort Destination Family and Luxury crowds are fully reachable.' });
   if (!worldOnly && p._stranded) lines.push({ cls:'decay', text: 'Stranded: your terrain reach gate closed faster than you moved. A stranded-appeal penalty hit this season.' });
-  if (!worldOnly && (p._stillSeasons || 0) >= 2) lines.push({ cls:'decay', text: 'Track-out: ' + p._stillSeasons + ' seasons with no real displacement. Fit is eroding (penalty ' + ((p._trackOutPen || 0) * 100).toFixed(0) + '%). Spend on any lever to reset the clock.' });
+  // Track-out legibility (2026-09-18 persona audit, item 1): three personas read the old
+  // "spend on any lever to reset the clock" line as a promise that money alone resets it. It does
+  // not. The clock resets on REALIZED displacement clearing TRACKOUT_EPS, and the move-fraction
+  // floor means a small aim into a crowded pocket can spend hard and still not clear it. So the
+  // log now prints the season's actual displacement against the threshold it had to beat.
+  const dispMag = (!worldOnly && p._realizedDelta) ? Math.hypot(p._realizedDelta[0], p._realizedDelta[1], p._realizedDelta[2]) : null;
+  if (dispMag != null) {
+    // The verdict is read off the engine's own counter, never re-derived from a rounded number:
+    // a displacement of 0.0199 prints as 0.020 at three decimals and then contradicts its own
+    // sentence. Four decimals on the figure, and _stillSeasons === 0 is what "reset" means.
+    const cleared = (p._stillSeasons || 0) === 0;
+    const fracTxt = p._moveFraction != null
+      ? ' Of the distance you aimed for, ' + (p._moveFraction * 100).toFixed(0) + '% landed once demand mass and rival crowding took their cut.'
+      : '';
+    lines.push({ cls: cleared ? 'market' : 'decay',
+      text: 'Movement: you actually moved ' + dispMag.toFixed(4) + ' against the ' + CONFIG.TRACKOUT_EPS.toFixed(2)
+          + ' a season has to clear to count as a real move, so the track-out clock '
+          + (cleared ? 'reset to zero.' : 'kept running.') + fracTxt });
+  }
+  if (!worldOnly && (p._stillSeasons || 0) >= 2) lines.push({ cls:'decay', text: 'Track-out: ' + p._stillSeasons + ' straight seasons under that ' + CONFIG.TRACKOUT_EPS.toFixed(2) + ' threshold, and fit is eroding (penalty ' + ((p._trackOutPen || 0) * 100).toFixed(0) + '%). Only realized displacement resets the clock, and spending will not buy it on its own when the ground you are aiming at is crowded.' });
   if (!worldOnly && p._util != null && p._util < 0.98) lines.push({ cls:'decay', text: 'Understaffed: you could only run ' + (p._util * 100).toFixed(0) + '% of your capacity. Skiers you had built for were turned away, and your reputation took the hit. Hire ahead of the build.' });
   if (!worldOnly && (p._warCost || 0) > 0.1) lines.push({ cls:'contest', text: 'Poaching war: this season\'s raid exchange cost you $' + p._warCost.toFixed(1) + ' in margin.' });
   if (!worldOnly && (p._raid || 0) < -0.01 || (p._raidC || 0) < -0.01) lines.push({ cls:'contest', text: 'A rival move pulled appeal share away from you this season.' });
@@ -1312,7 +1484,7 @@ function renderForSaleHTML(){
 }
 function renderDealsPanel(){
   const el = document.getElementById('dealsPanel'); if (!el) return;
-  if (!multiteamOn() || !engineState) { el.hidden = true; return; }
+  if (!multiteamOn() || !engineState) { el.hidden = true; setTurnBadge(0); return; }
   el.hidden = false;
   const me = engineState.resorts[engineState.playerIdx];
   const btn = (label, attrs) => `<button ${attrs} style="padding:5px 9px;border-radius:6px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);cursor:pointer;font-family:var(--font-body);font-size:12px;margin-right:4px;">${label}</button>`;
@@ -1343,6 +1515,19 @@ function renderDealsPanel(){
     + list('AGREED, settles at resolve', agreed, d => `<div class="lever"><div class="t"><span>${seatName(other(d))}: ${dealSummary(d)}</span></div></div>`)
     + renderForSaleHTML();
   el.innerHTML = `<h2 style="margin-top:14px;">Deals</h2><div class="l" style="font-size:11.5px;color:var(--dim);margin:0 2px 8px;">Offers go to the other table's screen. Accepted deals settle when the instructor resolves; unanswered ones expire.</div>` + html;
+  setTurnBadge(myTurn.length);
+}
+// MY TURN badge (2026-09-18 persona audit, item 4). An offer that arrived while a table sat on the
+// BUILD or PRICE step was invisible until somebody wandered back to READ, and the instructor had to
+// say "check your Deals panel" out loud before every resolve. The READ dot now carries the count.
+function setTurnBadge(n){
+  const wrap = document.querySelector('#stepDots .dotWrap');
+  if (!wrap) return;
+  let b = wrap.querySelector('.turnBadge');
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'turnBadge'; wrap.appendChild(b); }
+  b.textContent = n > 1 ? 'MY TURN (' + n + ')' : 'MY TURN';
+  b.title = n > 1 ? n + ' offers are waiting on your answer' : 'An offer is waiting on your answer';
 }
 document.addEventListener('click', async e => {
   const send = e.target.closest('#dealSendBtn');
@@ -1511,9 +1696,31 @@ function updateGhostAndMemos(){
   const util = Math.min(1, crewNow / Math.max(1, req));
   const capNote = (Math.abs(capDelta) < 0.01 ? 'Capacity holds flat this season.' : `Capacity ${capDelta > 0 ? 'grows' : 'shrinks'} by ${Math.abs(capDelta).toFixed(1)} units this season.`)
     + ` With the crew you will have, you can run about ${(util*100).toFixed(0)}% of it${util < 0.98 ? ' (understaffed: unserved skiers and a reputation hit)' : ''}. Crew hired now (${spend.hire}) arrives next season.`;
+  // Move-fraction breakdown (2026-09-18 persona audit, item 1). Every term is read straight off the
+  // same resolver the season will run, so the memo cannot drift from the outcome.
+  const tBase  = CONFIG.IMPERFECT_BASE;
+  const tDem   = res.demandMass * CONFIG.IMPERFECT_DEMAND_W;
+  const tCrowd = res.crowdWeight * CONFIG.IMPERFECT_CROWD_W * (1 - res.scaleAdv * CONFIG.SCALE_CROWD_SHIELD);
+  const tDist  = res.dist * CONFIG.IMPERFECT_DIST_W;
+  const tScale = res.scaleAdv;
+  const rawFrac = tBase + tDem - tCrowd - tDist + tScale;
+  const floored = res.fraction > rawFrac + 1e-9;
+  const f2 = v => v.toFixed(2);
+  const expDisp = Math.hypot(res.realized[0], res.realized[1], res.realized[2]);
+  const clockTxt = expDisp >= CONFIG.TRACKOUT_EPS
+    ? `clears the ${CONFIG.TRACKOUT_EPS.toFixed(2)} a season needs, so it resets your track-out clock`
+    : `falls short of the ${CONFIG.TRACKOUT_EPS.toFixed(2)} a season needs, so your track-out clock keeps running however much you spend`;
+  const moveTable = `<div style="margin-top:6px;font-family:var(--font-mono);font-size:11.5px;line-height:1.6;color:var(--dim);">`
+    + `base ${f2(tBase)} &nbsp;+ demand mass ${f2(tDem)} <span style="opacity:.7">(mass ${f2(res.demandMass)})</span><br>`
+    + `&nbsp;&minus; rival crowding ${f2(tCrowd)} <span style="opacity:.7">(weight ${f2(res.crowdWeight)}${res.crowdWeight < 0.005 ? ', nobody sits nearer this target than you do' : ''})</span>`
+    + ` &nbsp;&minus; reach ${f2(tDist)} <span style="opacity:.7">(distance ${f2(res.dist)})</span><br>`
+    + `&nbsp;+ scale ${f2(tScale)} &nbsp;=&nbsp; <b style="color:var(--gold)">${f2(res.fraction)}</b>`
+    + (floored ? ` <span style="opacity:.7">(held up by the ${f2(0.08 + res.scaleAdv)} floor)</span>` : '')
+    + `</div>`;
   cards.innerHTML = `
     <h2>Season Projection</h2>
-    <div class="memo"><b>Aim:</b> this plan aims toward ${nearest ? nearest.name : 'open ground'}. Move fraction estimate: ${(res.fraction*100).toFixed(0)}% of the intended distance lands (demand mass ${(res.demandMass).toFixed(2)}, rival crowd weight ${(res.crowdWeight).toFixed(2)}). ${gateLine}</div>
+    <div class="memo"><b>Aim:</b> this plan aims toward ${nearest ? nearest.name : 'open ground'}. Move fraction estimate: ${(res.fraction*100).toFixed(0)}% of the intended distance lands.${moveTable}</div>
+    <div class="memo"><b>Track-out clock:</b> this plan moves you about ${expDisp.toFixed(4)} from where you stand, which ${clockTxt}.</div>
     <div class="memo"><b>Reach:</b> ${reachNote}</div>
     <div class="memo"><b>Capacity and crew:</b> ${capNote}</div>
     <div class="memo"><b>Contest:</b> ${rivalsNear.length ? rivalsNear.join(', ') + ' already sit near this target region' : 'no rival sits close to this target yet'}.</div>
@@ -3285,7 +3492,30 @@ document.getElementById('helpBtn').addEventListener('click', ()=>{ document.getE
   btn.addEventListener('click', ()=>{ MAP_THEME = MAP_THEME.key==='paper' ? MAP_THEMES.night : MAP_THEMES.paper; applyMapChrome(); });
   applyMapChrome();
 })();
-document.getElementById('introClose').addEventListener('click', ()=>{ document.getElementById('introOverlay').classList.add('hidden'); });
+// ---- first-season legend overlay (item 5, persona audit 2026-09-18): see build-team.py notes
+// above the markup. Shown once (localStorage), only on a fresh join in season 1, before the
+// student has locked in, and never over the seat/wait/intro overlays or the ?mtnDemo screenshots.
+const LEGEND_SEEN_KEY = 'powder_legend_v1';
+function legendSeen(){ try { return localStorage.getItem(LEGEND_SEEN_KEY) === '1'; } catch(e){ return false; } }
+function markLegendSeen(){ try { localStorage.setItem(LEGEND_SEEN_KEY, '1'); } catch(e){} }
+function legendOverlayEligible(){
+  if (typeof MTN_DEMO !== 'undefined' && MTN_DEMO) return false;
+  if (!GAME || GAME.phase === 'ended' || GAME.season !== 0) return false;
+  if (SUBMITTED_SEASON === GAME.season) return false;
+  if (legendSeen()) return false;
+  return ['seatOverlay','waitOverlay','introOverlay'].every(id => document.getElementById(id).classList.contains('hidden'));
+}
+function dismissLegendOverlay(){ document.getElementById('legendOverlay').classList.add('hidden'); markLegendSeen(); }
+document.getElementById('legendSkip').addEventListener('click', dismissLegendOverlay);
+document.getElementById('legendGotIt').addEventListener('click', dismissLegendOverlay);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('legendOverlay').classList.contains('hidden')) dismissLegendOverlay();
+});
+
+document.getElementById('introClose').addEventListener('click', ()=>{
+  document.getElementById('introOverlay').classList.add('hidden');
+  if (legendOverlayEligible()) document.getElementById('legendOverlay').classList.remove('hidden');
+});
 
 // ==========================================================================
 // ---- end of game ----
