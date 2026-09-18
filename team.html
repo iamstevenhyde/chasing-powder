@@ -3325,13 +3325,19 @@ function computeEpitaph(p, rank){
 function showEnd(){
   const rs = engineState.resorts.filter(r => r.score != null);
   if (!rs.length) return;
-  const sorted = [...rs].sort((a,b)=>b.score-a.score);
+  // a group (a resort plus the mountains it bought) stands as one entry on its combined score, with
+  // its divisions listed under it; a division's rank is its group's rank
+  const groupScore = f => (f.groupScore != null ? f.groupScore : f.score);
+  const heads = rs.filter(r => r.owner == null);
+  const sorted = [...heads].sort((a,b)=>groupScore(b)-groupScore(a));
   const p = rs.find(r => r.i === MY_SEAT);
-  const rank = sorted.findIndex(f => f.i === MY_SEAT) + 1;
+  const myHead = p && p.owner != null ? rs.find(r => r.i === p.owner) || p : p;
+  const rank = sorted.findIndex(f => f.i === myHead.i) + 1;
   document.getElementById('endTitle').textContent = rank === 1 ? 'You held the mountain' : `${nameOf(sorted[0])} took the season`;
   document.getElementById('endEpitaph').textContent = computeEpitaph(p, rank);
+  const row = (f, sub) => `<tr><td>${sub ? '<span style="opacity:.75;padding-left:14px;">' : ''}${f.i===MY_SEAT?'<b>YOU: ':''}${nameOf(f)}${f.i===MY_SEAT?'</b>':''}${sub ? ' (division)</span>' : ''}</td><td>$${(sub ? f.score : groupScore(f)).toFixed(0)}</td><td>$${f.cash.toFixed(0)}</td></tr>`;
   document.getElementById('endTable').innerHTML = '<tr><th>Resort</th><th>Score</th><th>Cash</th></tr>' +
-    sorted.map(f=>`<tr><td>${f.i===MY_SEAT?'<b>YOU: ':''}${nameOf(f)}${f.i===MY_SEAT?'</b>':''}</td><td>$${f.score.toFixed(0)}</td><td>$${f.cash.toFixed(0)}</td></tr>`).join('');
+    sorted.map(f => row(f, false) + (f.divisions || []).map(i => rs.find(r => r.i === i)).filter(Boolean).map(d => row(d, true)).join('')).join('');
   document.getElementById('replayStrip').innerHTML = renderReplayStrip();
   document.getElementById('lockBtn').disabled = true;
   note('Six seasons done. The debrief is on the projector.');
