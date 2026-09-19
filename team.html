@@ -2144,15 +2144,31 @@ const MountainGL = (() => {
     return (a+(b-a)*fx)+((c+(d-c)*fx)-(a+(b-a)*fx))*fy;
   }
   // ---------- palette ----------
-  // Warm tabletop-diorama palette (2026-09-17, from the Midjourney art-direction sheets): cream
-  // sky, sand horizon, cool lavender snow shadow, umber rock, olive forest, navy water.
-  var PAL = {skyTop:[0xc4,0xb9,0xa3],skyHor:[0xe9,0xe0,0xca],snowLit:[0xf3,0xef,0xe4],snowSh:[0xb7,0xbd,0xca],
-    rock:[0x8a,0x62,0x44],forLit:[0x4e,0x66,0x44],forSh:[0x27,0x38,0x2c],meadow:[0xb8,0xa6,0x7a],
+  // Tabletop-diorama palette. 2026-09-19: the cream/sand sky of the 09-17 sheets read as beige
+  // snow on the projector, so the sky is now a bluebird gradient (tournament winner over a
+  // cold-dawn peach horizon and a steel overcast); snow is warm-white in sun, blue-grey in shade.
+  // 2026-09-19 art pass: illustrated alpine palette sampled from ART-REFERENCE-2026-09-19.png
+  // (sky #478296 dusty teal, snow #f4e8d2 ivory, shade #b8bdbe grey-blue, rock #4d4841). The
+  // island floats in the sky like the reference: the water disc is not drawn (ART.float).
+  var PAL = {skyTop:[0x3a,0x74,0x8c],skyHor:[0x62,0x95,0xa6],snowLit:[0xf8,0xf2,0xe4],snowSh:[0xb4,0xbc,0xc4],
+    rock:[0x8a,0x62,0x44],forLit:[0x4e,0x66,0x44],forSh:[0x27,0x38,0x2c],meadow:[0xd8,0xcc,0xae],
     runCor:[0xfb,0xf9,0xf3],runOut:[0x3a,0x42,0x48],lodgeWood:[0x8b,0x4d,0x2e],lodgeRoof:[0x4a,0x36,0x30],
     crew:[0xe5,0x68,0x32],closedBar:[0xc9,0x34,0x2f],liftSteel:[0x4e,0x54,0x57],cable:[0x22,0x26,0x29],
     water:[0x1f,0x2b,0x34]};
   function c3(a){return [a[0]/255,a[1]/255,a[2]/255];}
   function lerp3(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+  // Art knobs (2026-09-19): runtime-tweakable so a palette tournament shoots every variant from
+  // ONE build at identical camera and state (MountainGL.setArt({...}) from shot.mjs's PRE arg).
+  // band: toon-band weight vs smooth diffuse; ink: charcoal contour strength at grazing angles
+  // (fresnel, the only edge signal this FS has; it cannot see creases or building edges);
+  // inkPow: contour thinness; grain: world-space paper grain on surfaces; skyGrain: faint
+  // screen-space grain on the sky quad; float: 1 = no water disc, the island floats in the sky.
+  // Tournament 2026-09-19 (fresh critic, strips at three yaws): B (soft shading + contour) won by
+  // a thin margin; contour and banding were both near-invisible at projector scale, so these
+  // are B's values moderated, and neither is load-bearing. clouds: cream cumulus in the sky
+  // quad (procedural value-noise fbm, static in screen space), kept to the sides and below the
+  // eye line so they frame the island instead of breaking the skyline.
+  var ART = {band:0.50, ink:0.30, inkPow:3.5, grain:0.05, skyGrain:0.030, float:1, clouds:1};
 
   // ---------- GL setup: gl/programs/buffers are created lazily in init(), not at closure build time ----------
   var glCanvas = null, gl = null, glOK = false;
@@ -2162,7 +2178,7 @@ const MountainGL = (() => {
   var FS = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n'+
     'varying vec3 vN;varying vec3 vC;varying vec3 vW;varying vec2 vFx;varying vec4 vLP;'+
     'uniform vec3 uSunDir;uniform vec3 uSunCol;uniform vec3 uSkyCol;uniform vec3 uGndCol;uniform vec3 uFogCol;uniform vec3 uEye;uniform vec2 uFog;'+
-    'uniform sampler2D uShadowTex;uniform float uShadowOn;uniform float uHasDepthTex;uniform float uShadowStr;'+
+    'uniform sampler2D uShadowTex;uniform float uShadowOn;uniform float uHasDepthTex;uniform float uShadowStr;uniform vec4 uArt;uniform vec3 uInk;'+
     // one cached 1024 shadow map (see initShadow/renderShadow); 4-tap PCF, slope-scaled bias
     'float unpackD(vec4 c){return dot(c,vec4(1.0,1.0/255.0,1.0/65025.0,1.0/16581375.0));}'+
     'float occAt(vec2 uv,float z){vec4 c=texture2D(uShadowTex,uv);float dd=uHasDepthTex>0.5?c.r:unpackD(c);return z>dd?1.0:0.0;}'+
@@ -2176,16 +2192,18 @@ const MountainGL = (() => {
     'float cord=sin(vFx.y*155.0);n=normalize(n+vec3(cord*0.022,0.0,cord*0.015)*vFx.x*cordFade);'+
     // warm key + cool fill: a 4-step toon band softened 55/45 with the smooth term, shadow side tinted blue
     // wrapped diffuse (0.25) keeps the shaded half of the spinning island modelled, not flat
-    'float diff=max(dot(n,uSunDir)*0.75+0.25,0.0);float band=mix(diff,floor(diff*4.0+0.5)/4.0,0.55)*sh;float hemi=n.y*0.5+0.5;'+
+    'float diff=max(dot(n,uSunDir)*0.75+0.25,0.0);float band=mix(diff,floor(diff*4.0+0.5)/4.0,uArt.x)*sh;float hemi=n.y*0.5+0.5;'+
     'vec3 amb=mix(uGndCol,uSkyCol,hemi);vec3 viewDir=normalize(uEye-vW);'+
     'vec3 lit=vC*(amb*0.62*mix(vec3(0.90,0.93,1.0),vec3(1.0),band)*(0.92+0.08*sh)+uSunCol*(0.10+band*0.78));'+
     'float snow=smoothstep(0.58,0.88,min(vC.r,min(vC.g,vC.b)));float sparkle=pow(max(dot(reflect(-uSunDir,n),viewDir),0.0),30.0);'+
-    'lit+=uSunCol*sparkle*snow*(0.05+0.08*vFx.x);lit*=1.0+cord*0.045*vFx.x*cordFade*snow;'+
-    // sun-side rim light lifts silhouettes off the cream sky; the fresnel darkening is now warm, not teal
-    'float fres=pow(1.0-max(dot(n,viewDir),0.0),2.6);float rim=fres*max(dot(n,uSunDir)*0.6+0.4,0.0);lit+=uSunCol*rim*0.12;'+
+    'lit+=uSunCol*sparkle*snow*(0.02+0.04*vFx.x);lit*=1.0+cord*0.045*vFx.x*cordFade*snow;'+
+    // sun-side rim light lifts silhouettes off the sky; the charcoal contour (2026-09-19 art pass)
+    // is a sharpened fresnel: thin at the silhouette, half strength on snow, fading with distance
+    'float fres=pow(1.0-max(dot(n,viewDir),0.0),2.6);float rim=fres*max(dot(n,uSunDir)*0.6+0.4,0.0);lit+=uSunCol*rim*0.08;'+
+    'float ink=pow(1.0-max(dot(n,viewDir),0.0),uArt.z)*(1.0-0.5*snow)*(0.4+0.6*cordFade);'+
     'float grain=fract(sin(dot(vW.xz,vec2(12.9898,78.233)))*43758.5453);'+
-    'float cavity=clamp((0.82-n.y)*0.12+(1.0-smoothstep(0.02,0.72,vW.y))*0.08,0.0,0.20);'+
-    'lit*=0.975+grain*0.04-cavity;lit=mix(lit,vec3(0.16,0.12,0.10),fres*0.14);'+
+    'float cavity=clamp((0.82-n.y)*0.18+(1.0-smoothstep(0.02,0.72,vW.y))*0.10,0.0,0.30);'+
+    'lit*=1.0-uArt.w*0.5+grain*uArt.w-cavity;lit=mix(lit,uInk,ink*uArt.y);'+
     'float farFog=clamp((d-uFog.x)/uFog.y,0.0,0.72);float baseFog=(1.0-smoothstep(-0.45,0.55,vW.y))*0.14;'+
     'float fog=clamp(farFog+baseFog,0.0,0.80);gl_FragColor=vec4(mix(lit,uFogCol,fog),1.0);}';  var PVS='attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);gl_PointSize=2.5;}';
   var PFS='precision mediump float;void main(){gl_FragColor=vec4(0.95,0.97,1.0,0.85);}';
@@ -2194,22 +2212,28 @@ const MountainGL = (() => {
   var TVS='attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;varying vec2 vUV;void main(){vUV=aUV;gl_Position=uMVP*vec4(aPos,1.0);}';
   var TFS='precision mediump float;varying vec2 vUV;uniform sampler2D uTex;void main(){gl_FragColor=texture2D(uTex,vUV);}';
   var TPROG=null, nameTex=null, nameTexText=null;
+  // One 512x192 canvas, two rows: the resort name (top, v 0.5-1) and the PERMITS office plate
+  // (bottom, v 0-0.5). Both sign quads sample the same texture, so the office sign costs no
+  // extra draw call (2026-09-19 art pass; the ceiling is 26 and this pass sits at 24).
   function makeNameTex(text){
-    var c=document.createElement('canvas'); c.width=512; c.height=96; var x=c.getContext('2d');
+    var c=document.createElement('canvas'); c.width=512; c.height=192; var x=c.getContext('2d');
     x.fillStyle='#1f2b34'; x.fillRect(0,0,512,96); x.strokeStyle='#e0b65b'; x.lineWidth=6; x.strokeRect(7,7,498,82);
     x.fillStyle='#f3efe4'; x.font='bold 52px "Atkinson Hyperlegible",system-ui,sans-serif'; x.textAlign='center'; x.textBaseline='middle';
     var t=String(text).toUpperCase(); while(x.measureText(t).width>468 && t.length>3) t=t.slice(0,-1);
     x.fillText(t,256,50);
+    x.fillStyle='#d9b45a'; x.fillRect(0,96,512,96); x.strokeStyle='#3a2f24'; x.lineWidth=8; x.strokeRect(8,104,496,80);
+    x.fillStyle='#2b2622'; x.font='bold 60px "Atkinson Hyperlegible",system-ui,sans-serif'; x.fillText('PERMITS',256,146);
     var tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D,null); return tex;
   }
-  function pushTextQuad(arr,cx,cy,cz,ang,w,h){ // faces outward along (cos ang, sin ang), like pushPlate
+  function pushTextQuad(arr,cx,cy,cz,ang,w,h,v0,v1){ // faces outward along (cos ang, sin ang), like pushPlate; v0..v1 picks the texture row
+    if(v0===undefined){ v0=0.5; v1=1.0; }
     var tx=-Math.sin(ang),tz=Math.cos(ang);
     var p0=[cx-tx*w/2,cy-h/2,cz-tz*w/2],p1=[cx+tx*w/2,cy-h/2,cz+tz*w/2],p2=[cx+tx*w/2,cy+h/2,cz+tz*w/2],p3=[cx-tx*w/2,cy+h/2,cz-tz*w/2];
-    [[p0,1,0],[p1,0,0],[p2,0,1],[p2,0,1],[p3,1,1],[p0,1,0]].forEach(function(q){ arr.p.push(q[0][0],q[0][1],q[0][2]); arr.uv.push(q[1],q[2]); });
+    [[p0,1,v0],[p1,0,v0],[p2,0,v1],[p2,0,v1],[p3,1,v1],[p0,1,v0]].forEach(function(q){ arr.p.push(q[0][0],q[0][1],q[0][2]); arr.uv.push(q[1],q[2]); });
   }
   function drawTextured(buf,mvp,tex){
     if(!buf || !buf.count || !tex) return;
@@ -2228,10 +2252,25 @@ const MountainGL = (() => {
   var SVS='attribute vec2 aPos;varying vec2 vP;void main(){vP=aPos;gl_Position=vec4(aPos,0.9999,1.0);}';
   // Sky: a cream-to-sand gradient with a soft sun glow, a haze band at the horizon (NDC y=0, the
   // camera looks level) and, below it, the fog-washed water tone the water disc fades into.
-  var SFS='precision mediump float;varying vec2 vP;uniform vec3 uTop;uniform vec3 uHor;uniform vec2 uSunScr;uniform vec3 uGlow;uniform vec3 uWater;uniform float uHz;'+
-    'void main(){float y=vP.y-uHz;float t=clamp(y/max(1.0-uHz,0.2),0.0,1.0);vec3 c=mix(uHor,uTop,pow(t,0.8));float d=distance(vP,uSunScr);c+=uGlow*exp(-d*d*9.0)*0.40;'+
-    'float haze=1.0-smoothstep(0.0,0.14,y);c=mix(c,uHor,haze*0.35);'+
-    'float below=1.0-smoothstep(-0.22,0.01,y);c=mix(c,uWater,below);'+
+  var SFS='precision mediump float;varying vec2 vP;uniform vec3 uTop;uniform vec3 uHor;uniform vec2 uSunScr;uniform vec3 uGlow;uniform vec3 uWater;uniform float uHz;uniform float uGrain;uniform float uFloat;uniform float uClouds;uniform float uAspect;'+
+    'float hs(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}'+
+    'float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hs(i),hs(i+vec2(1.0,0.0)),f.x),mix(hs(i+vec2(0.0,1.0)),hs(i+vec2(1.0,1.0)),f.x),f.y);}'+
+    'float fbm(vec2 p){return 0.5*vn(p)+0.25*vn(p*2.03+1.7)+0.125*vn(p*4.1+3.1)+0.0625*vn(p*8.3+5.2);}'+
+    // floating: the top-to-horizon curve is smoothstep (pow(t,0.8) has infinite slope at the eye
+    // line and drew a crease there once the water plane was gone)
+    'void main(){float y=vP.y-uHz;float t=clamp(y/max(1.0-uHz,0.2),0.0,1.0);vec3 c=mix(uHor,uTop,uFloat>0.5?t*t*(3.0-2.0*t):pow(t,0.8));float d=distance(vP,uSunScr);c+=uGlow*exp(-d*d*9.0)*0.40*(1.0-uFloat*0.5);'+
+    // floating island (uFloat): no horizon line at all, the gradient simply continues below the
+    // eye line toward a deeper teal, so the island hangs in the sky like the reference
+    'float haze=(1.0-smoothstep(0.0,0.14,y))*(1.0-uFloat*0.75);c=mix(c,uHor,haze*0.35);'+
+    'float below=uFloat>0.5?clamp(-y/0.9,0.0,1.0):1.0-smoothstep(-0.22,0.01,y);c=mix(c,uWater,below);'+
+    // clouds: big cream cumulus low at the sides (they frame the plinth like the reference), a few
+    // small wisps high up; the centre column stays clear so the skyline is never broken
+    'if(uClouds>0.5){vec2 cp=vec2(vP.x*uAspect,vP.y);float cl=max(fbm(vec2(cp.x*1.15,cp.y*1.7)+vec2(2.3,0.7)),fbm(vec2(cp.x*1.3,cp.y*1.9)+vec2(-4.1,3.3))*0.96);'+
+    'float bandLo=smoothstep(-0.85,-0.35,y)*(1.0-smoothstep(0.0,0.30,y));float side=smoothstep(0.50,1.0,abs(cp.x));'+
+    'float cm=smoothstep(0.52,0.66,cl)*bandLo*side;'+
+    'vec3 cc=mix(vec3(0.74,0.77,0.77),vec3(0.95,0.92,0.84),smoothstep(0.56,0.76,cl));c=mix(c,cc,cm*0.9);}'+
+    // faint paper grain (2026-09-19 art pass): a 2-px screen-space hash, static because the sky quad never moves
+    'float g=fract(sin(dot(floor(gl_FragCoord.xy*0.5),vec2(12.9898,78.233)))*43758.5453);c+=(g-0.5)*uGrain;'+
     'gl_FragColor=vec4(c,1.0);}';  function compile(src,type){var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
     if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));return s;}
   function link(vs,fs){var p=gl.createProgram();gl.attachShader(p,compile(vs,gl.VERTEX_SHADER));
@@ -2307,16 +2346,22 @@ const MountainGL = (() => {
       var du=(u-cu)/wu,dv=(v-cv)/wv;
       // Three broad rock ribs break rotational symmetry; these are landforms, not fine noise.
       du+=0.12*Math.sin(dv*2.4);
-      var d=Math.hypot(du,dv),a=Math.atan2(dv,du);
-      var ribs=1+(0.19*Math.sin(a*3+0.6)+0.08*Math.cos(a*5-0.4))*d/(d+0.18);
-      return Math.exp(-Math.pow(d*d*ribs*ribs+0.0006,0.70)*2.0)*PEAK_H*h;
+      // 2026-09-19 visual pass: the +u (camera-facing, angle 0) side falls off 1.3x faster, so
+      // each summit shows a steeper rock face to the class; ribs amplified so the three lobes
+      // read as ridge lines from six metres instead of a smooth cone.
+      var d=Math.hypot(du>0?du*1.3:du,dv),a=Math.atan2(dv,du);
+      var ribs=1+(0.30*Math.sin(a*3+0.6)+0.14*Math.cos(a*5-0.4))*d/(d+0.18);
+      // exponent 0.70 -> 0.56 (2026-09-19): d^1.4 gave a convex bump ("ice-cream scoop"); nearer
+      // d^1.1 the flanks go concave and the summit pointed, which is the silhouette cue that reads
+      // as a mountain from six metres.
+      return Math.exp(-Math.pow(d*d*ribs*ribs+0.0006,0.50)*2.0)*PEAK_H*h;
     }
     function join(a,b,k){var t=Math.max(0,1-Math.abs(a-b)/k);return Math.max(a,b)+t*t*k*0.25;}
     var apron=Math.pow(Math.max(0,1-r/1.04),1.02)*PEAK_H*0.285;
 
     // Sentinel retains its dominant summit, with a wider crown and a descending front spur.
-    var sentinel=g(-0.21,-0.025,0.285,0.225,0.455)
-      +crest(-0.235,-0.045,0.22,0.18,0.205)
+    var sentinel=g(-0.21,-0.025,0.285,0.225,0.30)
+      +crest(-0.235,-0.045,0.22,0.18,0.36)
       +g(-0.035,0.025,0.36,0.12,0.085);
     // Forge is an uneven alpine ridge with a secondary summit, not a flat-topped mesa.
     var forge=crest(0.005,-0.49,0.35,0.275,0.39)
@@ -2326,8 +2371,14 @@ const MountainGL = (() => {
     var sun=crest(-0.015,0.46,0.48,0.29,0.46)
       +g(0.075,0.40,0.41,0.30,0.14)
       +g(0.12,0.62,0.40,0.17,0.115);
-    var mass=join(join(sentinel,forge,0.32),sun,0.32);
-    var saddle=g(-0.06,-0.265,0.36,0.14,0.105)+g(-0.045,0.245,0.37,0.14,0.10);
+    // 2026-09-19 Stage 6: saddles raised again (0.16/0.15 -> 0.27/0.25) and the join widened so
+    // the skyline is one massif with three summits instead of three separate bumps.
+    var mass=join(join(sentinel,forge,0.55),sun,0.55);
+    // 2026-09-19 art pass, Stage 3 (one bounded change): the Sentinel-Forge col lifted 0.27 -> 0.34
+    // and widened 0.14 -> 0.17 so Forge stops reading as a separate bump at yaw 0.3 (the
+    // silhouette residual every critic since s6 has named); the Sun col is untouched because
+    // the lee runs top out on that shoulder.
+    var saddle=g(-0.06,-0.29,0.36,0.14,0.34)+g(-0.045,0.245,0.37,0.14,0.25);
     var bowl=g(0.22,0.43,0.205,0.17,0.075);
     var spurs=g(0.20,-0.29,0.30,0.075,0.075)+g(0.22,0.27,0.34,0.09,0.065);
     var h=apron+mass+saddle+spurs-bowl;
@@ -2336,13 +2387,26 @@ const MountainGL = (() => {
     // samples independently, creating corrugated snow and unstable lighting at the polar seam.
     var high=Math.max(0,Math.min(1,(mass/PEAK_H-0.26)/0.34));
     var broad=(smoothN(x*0.85,z*0.85,rng2)-0.5)*0.20;
-    var crag=(smoothN(x*2.0,z*2.0,rng2+29)-0.5)*0.12*high;
-    h+=(broad+crag)*Math.pow(Math.max(0,1-r),0.65);
+    var crag=(smoothN(x*2.0,z*2.0,rng2+29)-0.5)*0.22*high;
+    // 2026-09-19 (critic kill-list: "still three ice-cream scoops"): a bench on every massif at
+    // 46-56% of the mass height, strongest on the camera-facing (+u) side, breaks each cone into a
+    // shoulder and a steeper summit block; a second, sharper crag octave serrates the summit
+    // outline so the skyline is jagged rather than smooth from six metres.
+    var mf=mass/PEAK_H, benchT=Math.max(0,Math.min(1,(mf-0.40)/0.10))*(1-Math.max(0,Math.min(1,(mf-0.50)/0.08)));
+    var bench=PEAK_H*0.055*benchT*(0.6+0.4*Math.max(0,Math.min(1,u*2+0.5)));
+    var serr=(smoothN(x*4.6,z*4.6,rng2+53)-0.5)*0.16*high*high;
+    h+=(broad+crag+serr)*Math.pow(Math.max(0,1-r),0.65)+bench;
     // Level the existing lake footprint; feather into the apron instead of intersecting it.
     var lakeD=Math.hypot((u-0.69)/0.18,(v+0.43)/0.105);
     var lakeT=Math.max(0,Math.min(1,(1.85-lakeD)/0.60));
     lakeT=lakeT*lakeT*(3-2*lakeT);
     h=h*(1-lakeT)+0.32*lakeT;
+    // Sample section 2026-09-19: a shelf under the rock outcrop at ang 0.95, r 0.58-0.72. The
+    // heightfield cannot make angular faces (0.07 x 0.12 cells, smooth normals), so the rocks are
+    // ledge meshes on this shelf; the shelf itself is where snow collects above and between them.
+    var oa=Math.atan2(z,x), od=Math.atan2(Math.sin(oa-0.95),Math.cos(oa-0.95));
+    var wA=Math.max(0,Math.min(1,(0.17-Math.abs(od))/0.07)), wR=Math.max(0,Math.min(1,(r-0.56)/0.05))*(1-Math.max(0,Math.min(1,(r-0.70)/0.06)));
+    h+=PEAK_H*0.04*wA*wR;
     return Math.max(0,h);
   }
   function buildTerrain(seed,seat){
@@ -2409,9 +2473,13 @@ const MountainGL = (() => {
     var wOff=state.snow==='powder'?-0.06:(state.snow==='drought'?0.22:0),snowLine=0.11+wOff;
     var snowCol=c3(PAL.snowLit),snowShade=c3(PAL.snowSh),forestCol=c3(PAL.forLit),meadowCol=c3(PAL.meadow);
     var inkCol=[0.22,0.16,0.12],runCol=c3(PAL.runCor),runEdge=c3(PAL.runOut);
-    var sentinelRock=[0.36,0.31,0.28],forgeRock=[0.58,0.40,0.27],sunRock=[0.64,0.50,0.37];
+    // art pass: rock is the reference's dark warm grey (#4d4841), not umber; the three peaks keep
+    // a small warmth spread so their geology still differs
+    var sentinelRock=[0.30,0.28,0.26],forgeRock=[0.42,0.36,0.30],sunRock=[0.46,0.41,0.35];
     if(state.snow==='powder') snowCol=lerp3(snowCol,[1,1,1],0.34);
-    var fogRimCol=state.snow==='drought'?[0.86,0.74,0.56]:c3(PAL.skyHor);
+    // art pass: the plate edge fades to the snow shade tone, not the (now teal) horizon, so the
+    // rim stays a cream plate like the reference instead of a teal ring
+    var fogRimCol=state.snow==='drought'?[0.86,0.74,0.56]:lerp3(c3(PAL.snowSh),c3(PAL.skyHor),0.25);
     var sunA=Math.atan2(SUN_DIR[2],SUN_DIR[0]),sunDir2=[Math.cos(sunA),Math.sin(sunA)],dc=mtnCounts(state);
     var activeIdx=activeRunIndices(state,slots),closedSet={};
     for(var ck=0;ck<dc.closed;ck++) closedSet[activeIdx[ck]]=true;
@@ -2424,13 +2492,14 @@ const MountainGL = (() => {
       if(ri>0){nsum+=tg.meta[(ri-1)*stride+si].h;nn++;}
       if(ri<RINGS){nsum+=tg.meta[(ri+1)*stride+si].h;nn++;}
       nsum+=tg.meta[ri*stride+((si+1)%SECTORS)].h;nsum+=tg.meta[ri*stride+((si+SECTORS-1)%SECTORS)].h;nn+=2;
-      var ao=Math.max(0,Math.min(1,(nsum/nn-m.h)/0.05))*0.18;
+      var ao=Math.max(0,Math.min(1,(nsum/nn-m.h)/0.04))*0.30;
       var wx=Math.cos(m.ang)*m.r*R,wz=Math.sin(m.ang)*m.r*R;
       var wind=smoothN(wx*0.42,wz*0.42,tg.rng2+71.0)-0.5;
       var altSnow=Math.max(0,Math.min(1,(elevFrac-snowLine+wind*0.055)/0.13));
       var slopeHold=Math.max(0.10,Math.min(1,(normY-0.28)/0.46));
       var snowMix=altSnow*(0.28+0.72*slopeHold);
-      var lowT=state.snow==='drought'?0.15:0.58,low=lerp3(meadowCol,snowCol,lowT+wind*0.3);
+      // art pass: bare patches are a faint warm cast on ivory (lowT 0.58 -> 0.80), not tan fields
+      var lowT=state.snow==='drought'?0.15:0.80,low=lerp3(meadowCol,snowCol,lowT+wind*0.2);
       low=lerp3(low,forestCol,Math.max(0,Math.min(1,(0.5-normY)*1.2))*0.5);
       var base=lerp3(low,snowCol,snowMix);
 
@@ -2447,18 +2516,20 @@ const MountainGL = (() => {
       var steep=Math.max(0,Math.min(1,(0.70-normY)/0.22));
       var rockT=elevFrac>0.29?steep*Math.max(0,Math.min(1,(elevFrac-0.27)/0.20)):0;
       // Umber strata on the steep top third; the broadened shoulders keep connected snowfields.
-      var highRock=Math.max(0,Math.min(1,(elevFrac-0.58)/0.14))*Math.max(0,Math.min(1,(0.72-normY)/0.15));
+      // 2026-09-19: the summit rock band now has a crisp lower edge (0.04 wide instead of 0.14) so
+      // it reads as an exposed rock block with a snow cap, not a brown wash fading into snow.
+      var highRock=Math.max(0,Math.min(1,(elevFrac-0.60)/0.04))*Math.max(0,Math.min(1,(0.78-normY)/0.12));
       rockT=Math.max(rockT,highRock);
       base=lerp3(base,rockCol,rockT*0.94);
       var blueShade=Math.max(0,Math.min(1,(0.88-normY)/0.30))*(1-rockT);
-      base=lerp3(base,snowShade,blueShade*snowMix*0.38);
+      base=lerp3(base,snowShade,blueShade*snowMix*0.42);
 
       // Sentinel ribs run vertically, Forge ledges horizontally, Sun Peak strata diagonally.
       var sentinelRibs=Math.pow(0.5+0.5*Math.sin(wz*8.8+m.h*1.15+wx*0.55),1.65);
       var forgeLedges=Math.pow(0.5+0.5*Math.sin(m.h*10.8+wz*0.65),1.45);
       var sunStrata=Math.pow(0.5+0.5*Math.sin((wx-wz)*3.25+m.h*3.2+0.8),1.35);
       var strata=sentinelRibs*sw+forgeLedges*fw+sunStrata*uw;
-      base=lerp3(base,inkCol,rockT*strata*(0.16+sw*0.14));
+      base=lerp3(base,inkCol,rockT*strata*(0.42+sw*0.18));
       base=[base[0]*(1-ao),base[1]*(1-ao),base[2]*(1-ao)];
 
       // Wind-loaded crowns get a restrained cream cornice highlight, strongest on Sun Peak.
@@ -2474,11 +2545,15 @@ const MountainGL = (() => {
           var dd=Math.atan2(Math.sin(m.ang-center),Math.cos(m.ang-center));
           var lateral=Math.abs(dd)*Math.max(m.r,0.07)*R,half=0.115+tt*0.055;
           if(lateral<half){
-            // groomed piste: a cool bright fill with a dark ink edge (the trail-map look of the sheets)
-            var edge=Math.max(0,Math.min(1,(lateral-(half-0.042))/0.042));
+            // groomed piste: a cool bright fill with a soft shaded shoulder. The old 0.042-wide ink
+            // edge (PAL.runOut) was narrower than the mesh spacing (0.07 ring, ~0.13 sector at mid
+            // radius), so it landed on stray vertices and interpolated into dark blobs along every
+            // corridor (2026-09-19, visible on the lee runs at yaw 1.7). The margin is now wider
+            // than a cell and only a shade tone, so under-sampling reads as shading, not smears.
+            var edge=Math.max(0,Math.min(1,(lateral-(half-0.13))/0.13));
             var fill=closedSet[si]?[0.57,0.61,0.62]:lerp3(runCol,[0.90,0.94,1.0],0.35);
             if(state.snow==='drought') fill=lerp3(fill,[0.86,0.78,0.62],0.42); // thin cover: sand shows through the groomed lanes
-            base=lerp3(fill,runEdge,edge*0.82);
+            base=lerp3(fill,lerp3(fill,snowShade,0.6),edge*edge*0.7);
           }
         }
       }
@@ -2522,11 +2597,25 @@ const MountainGL = (() => {
   function pushMesh(arr,glow,name,cx,cy,cz,ang,scale,swap){
     var m=PROPS[name]; if(!m){ if(!pushMesh.warned) console.warn('pushMesh: no prop '+name); pushMesh.warned=true; return; }
     var ca=Math.cos(ang),sa=Math.sin(ang),s=scale/1000,P=m.p,T=m.t,pal=m.pal,pn=m.pn;
+    if(m.maxY===undefined){ var my=0; for(var q=1;q<P.length;q+=3) if(P[q]>my) my=P[q]; m.maxY=my*3; } // 3x: compared against a centroid SUM of three y's
+    // swap.weather (0..1, art pass 2026-09-19): timber materials vary by plank COURSE (a hash of
+    // the triangle's local height band), so a wall reads as weathered boards, not confetti.
+    var wth=swap&&swap.weather?swap.weather:0, WOOD={wood:1,woodDark:1,woodPale:1};
     for(var t=0;t<T.length;t++){
       var col=pal[T[t]]; if(swap&&swap[pn[T[t]]]) col=swap[pn[T[t]]];
       var b=t*9,v=[];
       for(var k=0;k<3;k++){ var x=P[b+k*3]*s,y=P[b+k*3+1]*s,z=P[b+k*3+2]*s; v.push([cx+x*ca-z*sa,cy+y,cz+x*sa+z*ca]); }
-      var nb=v3norm(v3cross(v3sub(v[1],v[0]),v3sub(v[2],v[0])));
+      var nb=v3norm(v3cross(v3sub(v[1],v[0]),v[2]?v3sub(v[2],v[0]):[0,0,1]));
+      // 2026-09-19 art pass: several library roofs are wound inside-out (the aframe_lodge snow
+      // roof, proven with a material-debug build: its normals point DOWN, so the shader lit the
+      // cream roof as a ceiling and it read as dark timber). A face above the prop's footprint
+      // that faces down is a flipped exterior, not an underside, so its normal is turned up.
+      if(nb[1]<-0.15 && (P[b+1]+P[b+4]+P[b+7])>0.12*m.maxY) nb=[-nb[0],-nb[1],-nb[2]];
+      if(wth&&WOOD[pn[T[t]]]){
+        var ly=(P[b+1]+P[b+4]+P[b+7])/3*s, course=Math.floor(ly/(0.045*scale)), side=Math.floor((P[b]+P[b+3]+P[b+6])/(300*scale)+(P[b+2]+P[b+5]+P[b+8])/(900*scale));
+        var f=hashN(course,side,cx*3.1+cz*1.7);
+        col=lerp3(lerp3(col,[0.42,0.38,0.33],wth*f),[0.70,0.58,0.42],wth*(1-f)*0.45);
+      }
       for(k=0;k<3;k++){ arr.p.push(v[k][0],v[k][1],v[k][2]); arr.n.push(nb[0],nb[1],nb[2]); arr.c.push(col[0],col[1],col[2]); }
     }
     if(glow&&m.g.p.length){ var G=m.g.p,GC=m.g.c;
@@ -2647,7 +2736,14 @@ const MountainGL = (() => {
   // The island edge is a stratified rock cliff (six alternating umber/ochre bands, each stepped a
   // little in or out so the ledges catch the key light) dropping into a wide navy water disc.
   function pushTerrainSkirt(arr,tg){
-    var segs=96,bands=6,cols=[[0.60,0.47,0.35],[0.42,0.32,0.26],[0.55,0.43,0.33],[0.35,0.27,0.23],[0.50,0.39,0.30],[0.29,0.23,0.20]];
+    // 2026-09-19: six strongly alternating strata read as a striped drum from six metres and
+    // pulled the eye off the lodge; now a quiet two-tone soil with one darker footing band.
+    // 2026-09-19 art pass: with the water disc gone the whole plinth shows. The alternating
+    // in/out band radii self-shadowed into three light stripes ("cake stand" again), so the
+    // radius now varies by ANGLE only (a rough rock face, same across bands), each column takes
+    // one of three reference rock tones (#75634f / #59574f / #443f39), and the top band is a
+    // cream snow lip that overhangs the rock like the reference's plate edge.
+    var segs=96,bands=6,cols=[[0.46,0.39,0.31],[0.35,0.34,0.31],[0.27,0.25,0.22]],lip=c3(PAL.snowLit);
     for(var i=0;i<segs;i++){
       var a0=i/segs*Math.PI*2,a1=(i+1)/segs*Math.PI*2;
       var r0=R*(0.988+0.010*Math.sin(a0*7+tg.rng2)),r1=R*(0.988+0.010*Math.sin(a1*7+tg.rng2));
@@ -2655,10 +2751,12 @@ const MountainGL = (() => {
       var y0=heightAt(x0,z0,tg.rng2,tg.ridgeA)+0.012,y1=heightAt(x1,z1,tg.rng2,tg.ridgeA)+0.012;
       var b0=-0.66-0.12*Math.sin(a0*5.0+1.7),b1=-0.66-0.12*Math.sin(a1*5.0+1.7);
       var n=v3norm([Math.cos((a0+a1)*0.5),0,Math.sin((a0+a1)*0.5)]);
+      var colI=Math.floor(hashN(i*0.37,3.1,tg.rng2)*3), rockC=cols[colI%3];
+      var rockA=1+0.012*Math.sin(a0*11+tg.rng2*0.3)+0.006*Math.sin(a0*23), rockB=1+0.012*Math.sin(a1*11+tg.rng2*0.3)+0.006*Math.sin(a1*23);
       for(var k=0;k<bands;k++){
-        var t0=k/bands,t1=(k+1)/bands,sgn=(k%2?1:-1);
-        var ra=1+sgn*0.010*(1+0.5*Math.sin(a0*11+k*2.3)),rb=1+sgn*0.010*(1+0.5*Math.sin(a1*11+k*2.3));
-        var ya=y0+(b0-y0)*t0,yb=y0+(b0-y0)*t1,yc=y1+(b1-y1)*t0,yd=y1+(b1-y1)*t1,c=cols[k%cols.length];
+        var t0=k/bands,t1=(k+1)/bands,ra=rockA,rb=rockB;
+        if(k===0){ ra=1.018; rb=1.018; t1=0.055; } else if(k===1){ t0=0.055; }
+        var ya=y0+(b0-y0)*t0,yb=y0+(b0-y0)*t1,yc=y1+(b1-y1)*t0,yd=y1+(b1-y1)*t1,c=k===0?lip:rockC;
         [[x0*ra,ya,z0*ra],[x1*rb,yc,z1*rb],[x0*ra,yb,z0*ra],[x0*ra,yb,z0*ra],[x1*rb,yc,z1*rb],[x1*rb,yd,z1*rb]].forEach(function(q){
           arr.p.push(q[0],q[1],q[2]);arr.n.push(n[0],n[1],n[2]);arr.c.push(c[0],c[1],c[2]);});
       }
@@ -2666,11 +2764,15 @@ const MountainGL = (() => {
   }
   // Water: an unlit disc (fog would grey it out) shaded navy at the island and lifting toward the
   // horizon haze at its rim; the sky shader paints that same rim tone below the horizon line.
-  var WATER_RIM=[0.70,0.69,0.66];
+  var WATER_RIM=[0.60,0.68,0.76];
   function buildWater(){
     // concentric rings: navy out to ~1.5 island radii, then a long fade into the horizon haze
     var arr={p:[],c:[]},segs=64,y=-0.42,cIn=c3(PAL.water),cMid=lerp3(c3(PAL.water),WATER_RIM,0.45);
-    var rings=[[0,cIn],[8,cIn],[18,cMid],[49,WATER_RIM]];
+    // 2026-09-19: the old navy-to-8 then mid-to-18 steps read as two stacked dark rings under the
+    // island from the low camera ("a sliced hockey puck", two critics). Now a continuous fade
+    // that starts lifting right at the island edge.
+    var c1=lerp3(cIn,WATER_RIM,0.22),c2=lerp3(cIn,WATER_RIM,0.50),c3b=lerp3(cIn,WATER_RIM,0.78);
+    var rings=[[0,c3b],[5.3,c3b],[18,c3b],[30,cMid],[49,WATER_RIM]];
     function push(x,z,c){ arr.p.push(x,y,z); arr.c.push(c[0],c[1],c[2]); }
     for(var i=0;i<segs;i++){
       var a0=i/segs*Math.PI*2,a1=(i+1)/segs*Math.PI*2,c0=Math.cos(a0),s0=Math.sin(a0),c1=Math.cos(a1),s1=Math.sin(a1);
@@ -2707,6 +2809,48 @@ const MountainGL = (() => {
     pushBox(body,x+0.31*scale,y+0.08*scale,z,0.08*scale,0.08*scale,0.16*scale,[0.38,0.25,0.18]);
     pushQuadX(lights,x+0.315*scale,y+0.12*scale,z,0.12*scale,0.08*scale,[0.96,0.68,0.30]);
   }
+  // The PERMITS office (art pass 2026-09-19, from Steven's reference): one small patrol cabin on
+  // a stilted timber deck on a ledge of Sentinel's camera-facing face, reached by a stair of
+  // steps that follow the slope. Lives in the landmarks buffer (no new draw call); the sign is
+  // an ochre plate plus the second row of the name texture when the resort has a name.
+  function pushPermitsOffice(body,lights,signs,tg,named){
+    // Site probed numerically (progress.log 2026-09-19 art pass): the shoulder at u -0.19, v 0.00
+    // is the flattest high spot on the camera side (81% of peak height, slope 0.44 against 1.05
+    // at the first try), and its fall line runs at 0.9 rad, so the stair goes that way.
+    // Stair direction 0.2 rad: about 40 degrees off the 0.9 fall line, so the ground under it
+    // drops slower than the treads (0.31 against 0.67 per unit) and the stair meets the snow
+    // after two risers instead of running out along a pier of posts.
+    // Bearing probe from the site (same script): every camera-side bearing falls 0.8 in half a
+    // unit, but bearing -0.92 drops 0.29 in 0.3 units and then runs flat onto a ledge, so the
+    // stair goes that way and the sign faces the camera separately.
+    var ax=-0.19*R,az=0.0*R,y=heightAt(ax,az,tg.rng2,tg.ridgeA)+0.05,sc=0.46,face=0.35,stairB=-0.92;
+    var wood=c3(PAL.lodgeWood),dark=[0.30,0.24,0.19];
+    pushBox(body,ax,y+0.012,az,0.17*sc/0.46,0.012,0.15*sc/0.46,wood); // deck 0.34 x 0.30
+    var corners=[[-0.15,-0.13],[-0.15,0.13],[0.15,-0.13],[0.15,0.13]];
+    for(var i=0;i<4;i++){ var lx=ax+corners[i][0],lz=az+corners[i][1],ly=heightAt(lx,lz,tg.rng2,tg.ridgeA)-0.03; pushCyl(body,lx,ly,lz,0.014,Math.max(0.03,y-ly),5,dark); }
+    if(PROPS.patrol_cabin) pushMesh(body,lights,'patrol_cabin',ax-0.02,y+0.024,az,face,sc,{weather:0.5,roofRed:[0.36,0.30,0.26],red:[0.80,0.38,0.12],white:[0.62,0.50,0.32]});
+    else { pushBox(body,ax,y+0.10,az,0.10,0.08,0.09,wood); pushPrism(body,ax,y+0.18,az,0.12,0.06,0.10,dark); }
+    // sign plate on the deck's front edge, then the stair down the slope toward the camera
+    var fx=Math.cos(face),fz=Math.sin(face),sx=ax+fx*0.19,sz=az+fz*0.19;
+    pushCyl(body,sx,y-0.02,sz,0.010,0.16,5,dark);
+    pushPlate(body,sx,y+0.17,sz,face,0.18,0.045,[0.85,0.70,0.35]);
+    if(named) pushTextQuad(signs,sx+fx*0.004,y+0.17,sz+fz*0.004,face,0.165,0.031,0.0,0.5);
+    var bx=Math.cos(stairB),bz=Math.sin(stairB),px=ax+bx*0.16,pz=az+bz*0.16,py=y+0.024;
+    // steps run down the fall line toward the camera until one lands on the snow (the +u face
+    // is the steep one, so the run is short and the rise steep, like a fire escape)
+    // The first two steps bridge the deck height; after that the treads hug the snow, so the
+    // stair is a stepped boardwalk down the face rather than a ladder into thin air (a fall-line
+    // stair at a fixed rise never met the +u face, which drops faster than any sane staircase).
+    var prevY=py;
+    for(var st=0;st<14;st++){
+      var tx=px+bx*(0.03+st*0.042),tz=pz+bz*(0.03+st*0.042),ground=heightAt(tx,tz,tg.rng2,tg.ridgeA);
+      var ty=Math.max(ground+0.008,prevY-0.028); prevY=ty; // never more than one riser per tread
+      pushBox(body,tx,ty,tz,0.022,0.006,0.055,st%2?wood:dark);
+      if(ty-ground>0.016) pushCyl(body,tx,ground-0.02,tz,0.007,ty-ground+0.02,4,dark); // post while the tread is off the snow
+      if(ty<=ground+0.0081 && st>3) break;
+    }
+    hit(ax,y+0.14,az,0.28,'Permits office: every lift, run and lodge on this hill was approved up here, in person, by appointment');
+  }
   function pushObservationDeck(body,tg,scale){
     var x=-0.105*R,z=-0.075*R,y=heightAt(x,z,tg.rng2,tg.ridgeA)+0.025;
     var wood=c3(PAL.lodgeWood),steel=c3(PAL.liftSteel),roof=[0.22,0.27,0.27],snow=c3(PAL.snowLit);
@@ -2728,8 +2872,172 @@ const MountainGL = (() => {
     pushPrism(body,cx,cy+0.13*scale,cz,0.082*scale,0.045*scale,0.072*scale,c3(PAL.lodgeRoof));
     pushCyl(body,cx,cy+0.16*scale,cz,0.009*scale,0.10*scale,5,c3(PAL.cable));
   }
+  // ---- Sample section, 2026-09-19 course correction: SHAPE work, procedural, no new draw calls ----
+  // Everything below pushes into existing batches (lodge, trees, landmarks). Flat normals per face.
+  function hx3(a,b,c){var v=Math.sin(a*12.9898+b*78.233+c*37.719)*43758.5453;return v-Math.floor(v);}
+  function pushTri(arr,p0,p1,p2,col,outFrom){ // flat triangle; with outFrom, the normal points away from that point
+    var nb=v3norm(v3cross(v3sub(p1,p0),v3sub(p2,p0)));
+    if(outFrom){ var c=[(p0[0]+p1[0]+p2[0])/3,(p0[1]+p1[1]+p2[1])/3,(p0[2]+p1[2]+p2[2])/3]; if(v3dot(nb,v3sub(c,outFrom))<0) nb=[-nb[0],-nb[1],-nb[2]]; }
+    [p0,p1,p2].forEach(function(p){arr.p.push(p[0],p[1],p[2]);arr.n.push(nb[0],nb[1],nb[2]);arr.c.push(col[0],col[1],col[2]);});
+  }
+  function pushHex(arr,c,col){ // 8 corners: 0-3 one ring, 4-7 the facing ring in the same order; col = one colour or six per face
+    var ctr=[0,0,0]; for(var i=0;i<8;i++){ctr[0]+=c[i][0]/8;ctr[1]+=c[i][1]/8;ctr[2]+=c[i][2]/8;}
+    var F=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+    for(var f=0;f<6;f++){var q=F[f],cf=Array.isArray(col[0])?col[f]:col; pushTri(arr,c[q[0]],c[q[1]],c[q[2]],cf,ctr); pushTri(arr,c[q[0]],c[q[2]],c[q[3]],cf,ctr);}
+  }
+  function pushBar(arr,p0,p1,w,h,col){ // a beam of any orientation, w wide, h tall
+    var d=v3norm(v3sub(p1,p0)), side=v3cross(d,[0,1,0]); if(Math.hypot(side[0],side[1],side[2])<1e-4) side=[1,0,0]; side=v3norm(side);
+    var up=v3norm(v3cross(side,d)), c=[];
+    [p0,p1].forEach(function(p){ [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function(q){ c.push([p[0]+side[0]*q[0]*w/2+up[0]*q[1]*h/2,p[1]+side[1]*q[0]*w/2+up[1]*q[1]*h/2,p[2]+side[2]*q[0]*w/2+up[2]*q[1]*h/2]); }); });
+    pushHex(arr,c,col);
+  }
+  function pushQuadZ(arr,cx,cy,cz,w,h,colr){ // unlit window quad facing +/-z (lights buffer, no normal)
+    var p=[[cx-w/2,cy-h/2,cz],[cx+w/2,cy-h/2,cz],[cx+w/2,cy+h/2,cz],[cx-w/2,cy+h/2,cz]];
+    [p[0],p[1],p[2], p[2],p[3],p[0]].forEach(function(pt){arr.p.push(pt[0],pt[1],pt[2]);arr.c.push(colr[0],colr[1],colr[2]);});
+  }
+  // A gabled timber house with a THICK roof (two slabs with fascia), a chunky segmented snow cap
+  // with an irregular eave line and a drift along the ridge, plank-course walls, a stone
+  // foundation with proud blocks, corner posts, a gable sill/king post/rafters, and recessed
+  // windows (dark reveal, frame bars, glowing glass). Ridge runs along x; the gable faces +x.
+  // Build a house (or anything) rotated about (cx,cz) by ang: fn draws into temp arrays with the
+  // gable on +x, then positions and normals are turned and appended to body/lights.
+  function withRotation(body,lights,cx,cz,ang,fn){
+    var tb=newArr(), tl={p:[],c:[]}; fn(tb,tl);
+    var ca=Math.cos(ang), sa=Math.sin(ang), i;
+    for(i=0;i<tb.p.length;i+=3){ var x=tb.p[i]-cx, z=tb.p[i+2]-cz; body.p.push(cx+x*ca-z*sa, tb.p[i+1], cz+x*sa+z*ca); var nx=tb.n[i], nz=tb.n[i+2]; body.n.push(nx*ca-nz*sa, tb.n[i+1], nx*sa+nz*ca); }
+    for(i=0;i<tb.c.length;i++) body.c.push(tb.c[i]);
+    if(lights){ for(i=0;i<tl.p.length;i+=3){ var x2=tl.p[i]-cx, z2=tl.p[i+2]-cz; lights.p.push(cx+x2*ca-z2*sa, tl.p[i+1], cz+x2*sa+z2*ca); } for(i=0;i<tl.c.length;i++) lights.c.push(tl.c[i]); }
+  }
+  function pushGableHouse(body,lights,cx,cy,cz,hx,hz,wallH,ridgeH,s,opt){
+    opt=opt||{}; var sd=opt.seed||0;
+    var timber=[0.50,0.34,0.20],timberD=[0.36,0.24,0.14],beam=[0.22,0.16,0.11],roofC=[0.20,0.19,0.20],snow=[0.96,0.94,0.88],snowSh=[0.80,0.82,0.86],stone=[0.48,0.46,0.42],stoneD=[0.36,0.34,0.31],glass=[1.0,0.78,0.40],reveal=[0.10,0.09,0.09];
+    var y0=cy+0.10*s, wallTop=cy+wallH, ridge=cy+ridgeH, i, k;
+    pushBox(body,cx,cy+0.05*s,cz,hx+0.03*s,0.05*s,hz+0.03*s,stone);
+    for(i=0;i<6;i++){ var pz=cz-hz+0.05*s+i*(2*hz-0.10*s)/5; pushBox(body,cx+hx+0.035*s,cy+0.03*s+hx3(i+sd,3,1)*0.035*s,pz,0.012*s,0.02*s+0.012*s*hx3(i+sd,5,2),0.05*s,i%2?stoneD:stone); }
+    var nC=6; for(i=0;i<nC;i++){ var ya=y0+(wallTop-y0)*i/nC, yb=y0+(wallTop-y0)*(i+1)/nC; pushBox(body,cx,(ya+yb)/2,cz,hx,(yb-ya)/2,hz,lerp3(timber,timberD,hx3(i+sd,9,3)*0.7)); }
+    for(k=-1;k<=1;k+=2){ // gable triangles both ends, then the beams on the +x (camera) gable
+      pushTri(body,[cx+k*hx,wallTop,cz-hz],[cx+k*hx,wallTop,cz+hz],[cx+k*hx,ridge,cz],timberD,[cx,wallTop,cz]);
+      pushBar(body,[cx+k*hx+k*0.006*s,y0,cz-hz],[cx+k*hx+k*0.006*s,wallTop,cz-hz],0.035*s,0.035*s,beam);
+      pushBar(body,[cx+k*hx+k*0.006*s,y0,cz+hz],[cx+k*hx+k*0.006*s,wallTop,cz+hz],0.035*s,0.035*s,beam);
+    }
+    var gx=cx+hx+0.012*s;
+    pushBar(body,[gx,wallTop,cz-hz],[gx,wallTop,cz+hz],0.03*s,0.04*s,beam);
+    pushBar(body,[gx,wallTop,cz],[gx,ridge-0.03*s,cz],0.04*s,0.03*s,beam);
+    pushBar(body,[gx,wallTop+0.01*s,cz-hz+0.02*s],[gx,ridge-0.01*s,cz],0.03*s,0.035*s,beam);
+    pushBar(body,[gx,wallTop+0.01*s,cz+hz-0.02*s],[gx,ridge-0.01*s,cz],0.03*s,0.035*s,beam);
+    function winX(x,y,z,w,h,dir){ // recessed window on a +x/-x wall
+      pushPlate(body,x+dir*0.004*s,y,z,dir>0?0:Math.PI,w+0.05*s,h+0.05*s,reveal);
+      var fx=x+dir*0.018*s; pushBar(body,[fx,y-h/2-0.02*s,z-w/2-0.02*s],[fx,y+h/2+0.02*s,z-w/2-0.02*s],0.02*s,0.02*s,beam); pushBar(body,[fx,y-h/2-0.02*s,z+w/2+0.02*s],[fx,y+h/2+0.02*s,z+w/2+0.02*s],0.02*s,0.02*s,beam);
+      pushBar(body,[fx,y+h/2+0.02*s,z-w/2-0.02*s],[fx,y+h/2+0.02*s,z+w/2+0.02*s],0.02*s,0.02*s,beam); pushBar(body,[fx,y-h/2-0.02*s,z-w/2-0.02*s],[fx,y-h/2-0.02*s,z+w/2+0.02*s],0.02*s,0.03*s,beam);
+      pushQuadX(lights,x+dir*0.009*s,y,z,w,h,glass);
+    }
+    function winZ(x,y,z,w,h,dir){ // recessed window on a +z/-z wall
+      pushPlate(body,x,y,z+dir*0.004*s,dir>0?Math.PI/2:-Math.PI/2,w+0.05*s,h+0.05*s,reveal);
+      var fz=z+dir*0.018*s; pushBar(body,[x-w/2-0.02*s,y-h/2-0.02*s,fz],[x-w/2-0.02*s,y+h/2+0.02*s,fz],0.02*s,0.02*s,beam); pushBar(body,[x+w/2+0.02*s,y-h/2-0.02*s,fz],[x+w/2+0.02*s,y+h/2+0.02*s,fz],0.02*s,0.02*s,beam);
+      pushBar(body,[x-w/2-0.02*s,y+h/2+0.02*s,fz],[x+w/2+0.02*s,y+h/2+0.02*s,fz],0.02*s,0.02*s,beam); pushBar(body,[x-w/2-0.02*s,y-h/2-0.02*s,fz],[x+w/2+0.02*s,y-h/2-0.02*s,fz],0.02*s,0.03*s,beam);
+      pushQuadZ(lights,x,y,z+dir*0.009*s,w,h,glass);
+    }
+    if(opt.gableWindows){ winX(cx+hx,y0+(wallTop-y0)*0.55,cz-hz*0.45,0.13*s,0.15*s,1); winX(cx+hx,y0+(wallTop-y0)*0.55,cz+hz*0.45,0.13*s,0.15*s,1); winX(cx+hx,wallTop+(ridge-wallTop)*0.38,cz,0.11*s,0.13*s,1); }
+    if(opt.sideWindows){ for(i=0;i<opt.sideWindows;i++){ var wx=cx-hx*0.6+i*(1.2*hx/(opt.sideWindows-1||1)); winZ(wx,y0+(wallTop-y0)*0.55,cz+hz,0.11*s,0.13*s,1); winZ(wx,y0+(wallTop-y0)*0.55,cz-hz,0.11*s,0.13*s,-1); } }
+    // roof: thick slabs, fascia is the slab's own edge face; eave overhang 0.12 s, gable overhang 0.10 s
+    var over=0.12*s, ex=hx+0.10*s, ez=hz+over, ey=wallTop-over*(ridge-wallTop)/hz, ry=ridge+0.02*s, t=0.045*s;
+    // (the first build left cz out of these corners: every roof landed at z = 0 and, after
+    // withRotation, several units from its walls; that was the "roof through the lodge ridge")
+    function slabRing(xa,xb,sgn,zE,yE,yR,lift){ var n=v3norm([0,zE,sgn*(yR-yE)]); var b=[[xa,yE,cz+sgn*zE],[xb,yE,cz+sgn*zE],[xb,yR,cz],[xa,yR,cz]]; return b.map(function(p){return [p[0]+n[0]*lift,p[1]+n[1]*lift,p[2]+n[2]*lift];}); }
+    var sgn; for(sgn=-1;sgn<=1;sgn+=2){
+      var r0=slabRing(cx-ex,cx+ex,sgn,ez,ey,ry,0), r1=slabRing(cx-ex,cx+ex,sgn,ez,ey,ry,t);
+      pushHex(body,r0.concat(r1),roofC);
+      // rafter tails under the eave (round 2: "from some angles the eave still flattens out")
+      for(i=0;i<7;i++){ var rx2=cx-ex+0.05*s+i*(2*ex-0.10*s)/6; pushBar(body,[rx2,ey-0.03*s,cz+sgn*(ez-0.01*s)],[rx2,ey+(ry-ey)*(over*0.9/ez)-0.03*s,cz+sgn*(ez-over*0.9)],0.025*s,0.03*s,beam); }
+      // snow cap in six segments along the ridge, each with its own overhang and thickness
+      var nS=6; for(i=0;i<nS;i++){
+        var xa=cx-ex+(2*ex)*i/nS, xb=cx-ex+(2*ex)*(i+1)/nS, ov=(0.02+0.06*hx3(i+sd,7,sgn+2))*s, th=(0.05+0.035*hx3(i+sd,11,sgn+2))*s;
+        var slope=(ry-ey)/ez, zE2=ez+ov, yE2=ey-ov*slope;
+        var b0=slabRing(xa,xb,sgn,zE2,yE2,ry,t), b1=slabRing(xa,xb,sgn,zE2,yE2,ry,t+th);
+        pushHex(body,b0.concat(b1),[snowSh,snow,snowSh,snow,snow,snow]);
+      }
+    }
+    pushBar(body,[cx-ex-0.01*s,ry+t+0.03*s,cz],[cx+ex+0.01*s,ry+t+0.03*s,cz],0.18*s,0.075*s,[snow,snow,snowSh,snow,snow,snow]); // ridge drift
+    if(opt.chimney){ var chx=cx-hx*0.4, chz=cz+hz*0.3; pushBox(body,chx,wallTop+(ridge-wallTop)*0.75,chz,0.06*s,(ridge-wallTop)*0.55,0.06*s,stoneD); pushBox(body,chx,ridge+0.11*s,chz,0.07*s,0.02*s,0.07*s,snow); }
+    if(opt.balcony){ var by=y0+(wallTop-y0)*0.55-0.13*s, bx=cx+hx+0.09*s; pushBox(body,bx,by,cz,0.10*s,0.015*s,hz*0.9,timberD);
+      for(i=-2;i<=2;i++) pushBar(body,[bx+0.08*s,by,cz+i*hz*0.42],[bx+0.08*s,by+0.09*s,cz+i*hz*0.42],0.015*s,0.015*s,beam);
+      pushBar(body,[bx+0.08*s,by+0.09*s,cz-hz*0.86],[bx+0.08*s,by+0.09*s,cz+hz*0.86],0.02*s,0.018*s,beam); }
+  }
+  function pushChaletLodge(body,lights,cx,cy,cz,s){
+    // main hall (ridge along x, gable to the camera) plus a lower wing on the -z side
+    pushGableHouse(body,lights,cx,cy,cz+0.08*s,0.50*s,0.38*s,0.44*s,0.88*s,s,{gableWindows:1,sideWindows:3,chimney:1,balcony:1});
+    pushGableHouse(body,lights,cx-0.10*s,cy,cz-0.62*s,0.34*s,0.26*s,0.30*s,0.54*s,s,{gableWindows:1,sideWindows:2});
+    // entry porch on the wing: a small pitched hood on two posts, snow on top
+    var beam=[0.22,0.16,0.11]; pushBar(body,[cx+0.26*s,cy+0.10*s,cz-0.62*s],[cx+0.26*s,cy+0.36*s,cz-0.62*s],0.03*s,0.03*s,beam);
+    pushBox(body,cx+0.16*s,cy+0.37*s,cz-0.62*s,0.14*s,0.012*s,0.14*s,[0.20,0.19,0.20]); pushBox(body,cx+0.16*s,cy+0.40*s,cz-0.62*s,0.15*s,0.02*s,0.15*s,[0.96,0.94,0.88]);
+  }
+  // Evergreen family: a trunk that shows, 5-7 irregular branch tiers with gaps and dark undersides,
+  // a tapered crown, and snow on the upper tiers. Sizes and tier offsets come from the seed so a
+  // cluster varies without changing style.
+  // (pushCone's winding gives inward normals, which lit the first version as black cut-outs; the
+  // tiers here are built from pushTri with an explicit outward reference point.)
+  function pushTierCone(arr,cx,cy,cz,r,h,segs,col,rot,ref){ // side faces of a cone, normals away from ref
+    for(var i=0;i<segs;i++){ var a0=rot+i/segs*Math.PI*2, a1=rot+(i+1)/segs*Math.PI*2;
+      pushTri(arr,[cx+Math.cos(a0)*r,cy,cz+Math.sin(a0)*r],[cx+Math.cos(a1)*r,cy,cz+Math.sin(a1)*r],[cx,cy+h,cz],col,ref); }
+  }
+  function pushEvergreen(arr,x,y,z,h,seed,snowT,tint){
+    var trunk=[0.28,0.19,0.12], base=tint?lerp3(tint,[0.08,0.17,0.13],0.35):[0.10,0.20,0.16], tip=tint?lerp3(tint,[0.32,0.44,0.28],0.4):[0.22,0.34,0.22], under=[0.06,0.11,0.09], snow=[0.94,0.93,0.88];
+    var r0=h*0.21*(0.85+0.3*hx3(seed,1,1)), tiers=5+Math.floor(hx3(seed,2,2)*3);
+    pushCyl(arr,x,y,z,h*0.03,h*0.45,5,trunk);
+    // Round 2 (critic: "still a stacked-cone family"): each tier is now two or three separate
+    // branch clusters hung off the trunk at different bearings, so the crown is asymmetric with
+    // real gaps between clusters and between tiers; the top two tiers stay whole for the crown.
+    for(var i=0;i<tiers;i++){
+      var t=i/(tiers-1), ty=y+h*(0.16+0.72*t), rr=r0*(1-0.72*t)*(0.78+0.44*hx3(seed,3,i));
+      var segs=5+(i%2), ch=h*0.15*(1-0.25*t), rot=hx3(seed,7,i)*6.28, col=lerp3(base,tip,t*0.7+0.3*hx3(seed,6,i));
+      var nCl=(t>0.7)?1:(2+Math.floor(hx3(seed,8,i)*2)), a0=hx3(seed,9,i)*6.28;
+      for(var c=0;c<nCl;c++){
+        var ac=a0+c*(6.28/nCl)+(hx3(seed,10,i+c)-0.5)*0.9, off=nCl===1?0:rr*0.38, cr=nCl===1?rr:rr*(0.62+0.2*hx3(seed,11,i+c));
+        var cxi=x+Math.cos(ac)*off, czi=z+Math.sin(ac)*off, cy2=ty+(hx3(seed,12,i+c)-0.5)*ch*0.5;
+        pushTierCone(arr,cxi,cy2,czi,cr,ch,segs,col,rot+c,[cxi,cy2+ch*0.3,czi]);             // lit upper skirt
+        pushTierCone(arr,cxi,cy2+ch*0.10,czi,cr,-ch*0.30,segs,under,rot+c,[cxi,cy2+ch*0.3,czi]); // dark underside
+        if(snowT>0 && t>0.45) pushTierCone(arr,cxi,cy2+ch*0.34,czi,cr*0.76,ch*0.70,segs,snow,rot+c,[cxi,cy2+ch*0.5,czi]);
+      }
+    }
+    pushTierCone(arr,x,y+h*0.88,z,r0*0.18,h*0.14,5,tip,0,[x,y+h*0.9,z]);
+  }
+  // Rock ledge: an irregular seven-sided block, lower ring wider and buried, upper ring narrower
+  // and tilted, angular flat faces in two rock tones, a snow slab collected on top.
+  function pushRockLedge(arr,cx,cy,cz,rx,rz,h,seed,tilt){
+    var n=7, bot=[], top=[], rockA=[0.42,0.39,0.35], rockB=[0.31,0.29,0.27], snow=[0.95,0.94,0.89], snowE=[0.84,0.86,0.88], i, j;
+    for(i=0;i<n;i++){ var a=i/n*Math.PI*2, jr=0.75+0.5*hx3(seed,i,1);
+      bot.push([cx+Math.cos(a)*rx*jr, cy-0.14, cz+Math.sin(a)*rz*jr]);
+      var jr2=jr*(0.55+0.3*hx3(seed,i,2)); top.push([cx+Math.cos(a)*rx*jr2+tilt*rx*0.25, cy+h*(0.8+0.4*hx3(seed,i,3)), cz+Math.sin(a)*rz*jr2]); }
+    var ctr=[cx,cy+h*0.35,cz];
+    for(i=0;i<n;i++){ j=(i+1)%n; var cf=hx3(seed,i,4)<0.5?rockA:rockB; pushTri(arr,bot[i],bot[j],top[j],cf,ctr); pushTri(arr,bot[i],top[j],top[i],cf,ctr); }
+    var tc=[0,0,0]; top.forEach(function(p){tc[0]+=p[0]/n;tc[1]+=p[1]/n;tc[2]+=p[2]/n;});
+    for(i=0;i<n;i++){ j=(i+1)%n; pushTri(arr,top[i],top[j],tc,rockA,ctr); }
+    var sc=[tc[0],tc[1]+0.05,tc[2]];
+    for(i=0;i<n;i++){ j=(i+1)%n;
+      var si=[top[i][0]+(top[i][0]-tc[0])*0.14,top[i][1]+0.028,top[i][2]+(top[i][2]-tc[2])*0.14], sj=[top[j][0]+(top[j][0]-tc[0])*0.14,top[j][1]+0.028,top[j][2]+(top[j][2]-tc[2])*0.14];
+      pushTri(arr,si,sj,sc,snow,ctr); pushTri(arr,top[i],top[j],sj,snowE,ctr); pushTri(arr,top[i],sj,si,snowE,ctr); }
+    // Round 2 (critic: "sits ON the mountain, visible flat join"): a snow bank around the base,
+    // an irregular apron that rises 0.06 against the rock and feathers out 0.22 beyond it, so the
+    // seam is buried and the drift reads as snow packed against the outcrop.
+    for(i=0;i<n;i++){ j=(i+1)%n; var a1=i/n*Math.PI*2, a2=j/n*Math.PI*2, e1=0.18+0.10*hx3(seed,i,6), e2=0.18+0.10*hx3(seed,j,6);
+      var in1=[cx+Math.cos(a1)*rx*0.62,cy+0.06+0.03*hx3(seed,i,7),cz+Math.sin(a1)*rz*0.62], in2=[cx+Math.cos(a2)*rx*0.62,cy+0.06+0.03*hx3(seed,j,7),cz+Math.sin(a2)*rz*0.62];
+      var o1=[cx+Math.cos(a1)*(rx+e1),heightAtSafe(cx+Math.cos(a1)*(rx+e1),cz+Math.sin(a1)*(rz+e1),cy)-0.02,cz+Math.sin(a1)*(rz+e1)], o2=[cx+Math.cos(a2)*(rx+e2),heightAtSafe(cx+Math.cos(a2)*(rx+e2),cz+Math.sin(a2)*(rz+e2),cy)-0.02,cz+Math.sin(a2)*(rz+e2)];
+      pushTri(arr,in1,in2,o2,snowE,[cx,cy-1,cz]); pushTri(arr,in1,o2,o1,snow,[cx,cy-1,cz]); }
+  }
+  var _rockTg=null; function heightAtSafe(x,z,fallback){ return _rockTg?heightAt(x,z,_rockTg.rng2,_rockTg.ridgeA):fallback; }
+  // The sample outcrop: five ledges across the shelf heightAt cuts at ang 0.95, r 0.66 (the nearest
+  // run-free flank to the lodge: every front-face sector is a corridor 0.17 rad apart; the tram
+  // line passes 0.18 rad away and the first lee run 0.55 rad away).
+  function pushOutcrop(body,tg){
+    var A=0.95, RR=0.66, bx=Math.cos(A)*RR*R, bz=Math.sin(A)*RR*R, ux=Math.cos(A), uz=Math.sin(A), vx=-uz, vz=ux; _rockTg=tg;
+    var L=[[-0.16,0.02,0.34,0.26,0.30,0.15],[-0.34,0.26,0.24,0.20,0.24,0.3],[-0.30,-0.24,0.26,0.20,0.26,-0.2],[0.04,-0.30,0.18,0.15,0.16,0.1],[0.02,0.30,0.20,0.15,0.18,0.2],[-0.52,0.0,0.20,0.16,0.20,0.0]];
+    for(var i=0;i<L.length;i++){ var s=L[i], x=bx+ux*s[0]+vx*s[1], z=bz+uz*s[0]+vz*s[1], y=heightAt(x,z,tg.rng2,tg.ridgeA); pushRockLedge(body,x,y,z,s[2],s[3],s[4],i*7+3,s[5]); }
+    hit(bx,heightAt(bx,bz,tg.rng2,tg.ridgeA)+0.25,bz,0.5,'The outcrop: rock and snow shape sample (art pass)');
+  }
   function pushAFrameLodge(body,lights,cx,cy,cz,scale){
-    if(PROPS.aframe_lodge){ pushMesh(body,lights,'aframe_lodge',cx,cy,cz,0,scale*1.05); return; }
+    // the base lodge is the front anchor: warmer, lighter timber than the library default so its
+    // roof separates from the shaded slope behind it (critic 2026-09-19: "barely registers")
+    if(PROPS.aframe_lodge){ pushMesh(body,lights,'aframe_lodge',cx,cy,cz,0,scale*1.05,{weather:0.45,woodDark:[0.40,0.26,0.16],wood:[0.62,0.40,0.22]}); return; }
     var wood=c3(PAL.lodgeWood),roof=[0.19,0.25,0.27],snow=c3(PAL.snowLit);
     pushBox(body,cx,cy+0.035*scale,cz,0.42*scale,0.035*scale,0.31*scale,[0.24,0.18,0.15]);
     pushPrism(body,cx,cy+0.04*scale,cz,0.50*scale,0.62*scale,0.34*scale,wood);
@@ -2865,7 +3173,10 @@ const MountainGL = (() => {
       if(elevFrac > 0.6) continue;
       var inRun=false;
       for(var s=0;s<activeSlots.length;s++){
-        var angC = activeSlots[s].ang + 0.08*Math.sin(r*Math.PI*1.5);
+        // 2026-09-19: include the slot's bend, as terrainColor and pushSkier do; without it a bent
+        // corridor (up to 0.05 rad, ~0.13 units at mid radius) let boulders and trees sit on the piste.
+        var ttS = Math.max(0,Math.min(1,(r-activeSlots[s].topR)/(0.92-activeSlots[s].topR)));
+        var angC = activeSlots[s].ang + 0.08*Math.sin(r*Math.PI*1.5) + activeSlots[s].bend*Math.sin(ttS*Math.PI);
         var dd=Math.atan2(Math.sin(ang-angC),Math.cos(ang-angC));
         if(Math.abs(dd)*Math.max(r,0.04)*R<0.1 && r>0.04 && r<0.95){ inRun=true; break; } }
       var grove=Math.sin(x*1.18+tg.rng2*0.013)+Math.cos(z*1.04-tg.rng2*0.009)+0.55*Math.sin((x+z)*1.72);
@@ -2890,7 +3201,24 @@ const MountainGL = (() => {
                  : (kindR<0.86 && PROPS.pine_d) ? 'pine_d'
                  : (kindR<0.5 ? 'pine_a' : 'pine_b');
         if(kind==='boulder_a'||kind==='boulder_b') pushMesh(arr,null,kind,jx,jh,jz,yawR,scale*2.6);
-        else pushMesh(arr,null,kind,jx,jh,jz,yawR,scale*3.4,{needles:lerp3(colr,c3(PAL.forSh),shadeT*0.5)});
+        else if(jx>R*0.46 && Math.abs(jz)<R*0.42 && kind!=='larch'){
+          // sample section 2026-09-19: the trees on the front slope around the lodge use the
+          // procedural evergreen family instead of the library cones; same placement rules
+          var sp2=[0.12,0.26,0.24], tint2=lerp3(sp2,[0.48,0.55,0.32],groveLight*0.45);
+          pushEvergreen(arr,jx,jh,jz,scale*2.1,Math.floor(kindR*1000)+placed,elevFrac>0.28?1:0,tint2);
+        }
+        else {
+          // 2026-09-19: six silhouettes read as one flat green from six metres because every
+          // species took the same olive tint. Each species now owns a base tone (blue-green pine,
+          // yellow-olive pine, gold larch, frosted spruce), groves lighten it, altitude cools it.
+          // art pass 2026-09-19: the reference's conifers are deep green-black (#3f4133) with cream
+          // caps, so every species base is darker and less yellow; groves lighten toward a
+          // muted sage instead of lime, which kept the s7 forest from reading as a golf course.
+          var SP={pine_a:[0.12,0.26,0.24],pine_b:[0.20,0.33,0.20],pine_c:[0.36,0.41,0.16],pine_d:[0.08,0.18,0.14],larch:[0.66,0.46,0.14],spruce_snow:[0.22,0.36,0.36]};
+          var sp=SP[kind]||colr, tint=lerp3(sp,[0.48,0.55,0.32],groveLight*0.55);
+          tint=lerp3(tint,[0.30,0.40,0.46],Math.max(0,Math.min(1,(elevFrac-0.30)/0.30))*0.35);
+          pushMesh(arr,null,kind,jx,jh,jz,yawR,scale*3.4,{needles:lerp3(tint,c3(PAL.forSh),shadeT*0.4)});
+        }
       } else {
         pushPine(arr,jx,jh,jz,scale*0.64,scale*2.05,colr,lerp3(c3(PAL.forSh),colr,shadeT));
       }
@@ -3019,6 +3347,8 @@ const MountainGL = (() => {
     pushRoadArc(landmarks,tg,0.91,-0.94,0.72,0.13,[0.34,0.31,0.27]);
     var plazaY=heightAt(lodgeX,lodgeZ,tg.rng2,tg.ridgeA)+0.028;
     pushFlatOval(landmarks,lodgeX,plazaY,lodgeZ,0.68,0.52,24,[0.77,0.72,0.62]);
+    pushPermitsOffice(landmarks,windows,signs,tg,!!state.name);
+    pushOutcrop(landmarks,tg);
     if(dc.chutes){ pushObservationDeck(landmarks,tg,0.86); pushHelipad(landmarks,windows,tg);
       hit(Math.cos(-0.82)*0.49*R,heightAt(Math.cos(-0.82)*0.49*R,Math.sin(-0.82)*0.49*R,tg.rng2,tg.ridgeA)+0.2,Math.sin(-0.82)*0.49*R,0.6,'Patrol base and helipad: expert chutes open');
       hit(-0.105*R,heightAt(-0.105*R,-0.075*R,tg.rng2,tg.ridgeA)+0.2,-0.075*R,0.3,'Summit observation deck'); }
@@ -3033,7 +3363,7 @@ const MountainGL = (() => {
     if(state.lodgeBuilt){
       var lx=lodgeX, lz=lodgeZ, lh=heightAt(lx,lz,tg.rng2,tg.ridgeA);
       var lt = stamp('lodge',1), sc=popScale(lt[0],now);
-      pushAFrameLodge(lodge,windows,lx,lh,lz,0.92*sc);
+      pushChaletLodge(lodge,windows,lx,lh,lz,0.92*sc); // sample section 2026-09-19: procedural chalet replaces the library A-frame at the base only
       hit(lx,lh+0.35,lz,0.55,'Base lodge: Lodging built (comfort gate open)');
       lamp(lx+0.45,lh,lz,0.55,[0.30,0.19,0.06]);
       if(state.name){ // entrance sign: the resort name on two timber posts at the plaza edge
@@ -3047,8 +3377,12 @@ const MountainGL = (() => {
       emit(lx-0.05*0.97,lh+0.88*0.97,lz+0.30*0.97,[0.62,0.60,0.58],-0.25,0.42,0.10,3.2,0.10); // chimney smoke
       pushSnowmobile(lodge,lx+0.42*sc,lh,lz-0.36*sc,0.18,0.58*sc);
       if(PROPS.rental_shack){
-        pushMesh(lodge,windows,'rental_shack',lx-0.05*sc,heightAt(lx-0.05*sc,lz-0.62*sc,tg.rng2,tg.ridgeA),lz-0.62*sc,0.35,0.85*sc);
-        pushMesh(lodge,windows,'rental_shack',lx-0.05*sc,heightAt(lx-0.05*sc,lz+0.62*sc,tg.rng2,tg.ridgeA),lz+0.62*sc,-0.35,0.85*sc);
+        // resort-wide extension 2026-09-19: the two base shacks are small gable houses on the lodge's own recipe
+        // sites moved out from lz +/- 0.62 (critic: a shack roof clipped the lodge ridge): the +z one
+        // sits between the plaza edge and lift 1's base, the -z one beyond the wing and clear of
+        // lift 2's base and the entrance sign; both smaller (0.60 sc) than the old shack prop
+        [[0.45,0.80,0.35,11],[0.35,-1.25,-0.35,23]].forEach(function(q){ var rx=lx+q[0]*sc, rz=lz+q[1]*sc, ry=heightAt(rx,rz,tg.rng2,tg.ridgeA), rs=0.60*sc;
+          withRotation(lodge,windows,rx,rz,q[2],function(b,l){ pushGableHouse(b,l,rx,ry,rz,0.36*rs,0.24*rs,0.26*rs,0.50*rs,0.72*rs,{gableWindows:1,sideWindows:2,seed:q[3]}); }); });
       } else {
         pushResortHouse(lodge,windows,lx-0.05*sc,lh,lz-0.48*sc,0.68*sc,[0.23,0.28,0.28],3);
         pushResortHouse(lodge,windows,lx-0.05*sc,lh,lz+0.48*sc,0.68*sc,[0.23,0.28,0.28],3);
@@ -3072,8 +3406,14 @@ const MountainGL = (() => {
         var roofTone=i2%3===0?[0.27,0.22,0.20]:(i2%3===1?[0.38,0.27,0.22]:c3(PAL.lodgeRoof));
         // lodging tiers as library props: small A-frames, rental shacks and cabins facing the plaza
         var vKind=i2%3===0?'aframe_lodge':(i2%3===1?'rental_shack':'patrol_cabin');
-        if(PROPS[vKind]) pushMesh(village,windows,vKind,vx,vh,vz,vAng+(vAng<0?0.9:-0.9),(vKind==='aframe_lodge'?0.50:0.72)*vs);
-        else pushResortHouse(village,windows,vx,vh,vz,(0.34+(i2%3)*0.045)*vs,roofTone,2);
+        // resort-wide extension 2026-09-19: three gable-house variants (chalet with balcony and
+        // chimney, long low house, small cabin) on the lodge's recipe, turned to the old facing
+        (function(){ var vk=i2%3, vs2=vs*0.56, vf=vAng+(vAng<0?0.9:-0.9), sd=i2*17+5; // 0.56: the VSLOTS lanes were laid out for the library props, and the village must not outweigh the lodge
+          withRotation(village,windows,vx,vz,vf,function(b,l){
+            if(vk===0) pushGableHouse(b,l,vx,vh,vz,0.44*vs2,0.32*vs2,0.34*vs2,0.70*vs2,0.86*vs2,{gableWindows:1,sideWindows:1,chimney:1,balcony:1,seed:sd});
+            else if(vk===1) pushGableHouse(b,l,vx,vh,vz,0.50*vs2,0.27*vs2,0.29*vs2,0.54*vs2,0.78*vs2,{gableWindows:1,sideWindows:2,seed:sd});
+            else pushGableHouse(b,l,vx,vh,vz,0.31*vs2,0.25*vs2,0.27*vs2,0.52*vs2,0.68*vs2,{gableWindows:1,chimney:1,seed:sd});
+          }); })();
         hit(vx,vh+0.15,vz,0.25,'Village lodging: one building per $4 of cumulative Lodging spend');
         lamp(vx+Math.cos(vAng)*0.18,vh,vz+Math.sin(vAng)*0.18,0.28);
       }
@@ -3094,8 +3434,8 @@ const MountainGL = (() => {
       var atR = function(a,r){ var x=Math.cos(a)*r*R, z=Math.sin(a)*r*R; return [x,heightAt(x,z,tg.rng2,tg.ridgeA),z]; };
       // One big shape first: the maintenance barn. A rental_shack, wider and darker than the
       // guest-facing ones, so it reads as a shed and not another cabin.
-      var barnT = stamp('boh_barn',1), barnP = atR(BOH, 0.58), barnS = popScale(barnT[0], now);
-      if(PROPS.rental_shack) pushMesh(landmarks,windows,'rental_shack',barnP[0],barnP[1],barnP[2],BOH+Math.PI,1.05*barnS);
+      var barnT = stamp('boh_barn',1), barnP = atR(BOH, 0.53), barnS = popScale(barnT[0], now); // 0.58 -> 0.53: the gable-house barn is longer than the shack prop was
+      (function(){ var bs=0.80*barnS; withRotation(landmarks,windows,barnP[0],barnP[2],BOH+Math.PI,function(b,l){ pushGableHouse(b,l,barnP[0],barnP[1],barnP[2],0.44*bs,0.30*bs,0.30*bs,0.56*bs,0.9*bs,{sideWindows:2,seed:41}); }); })();
       hit(barnP[0],barnP[1]+0.2,barnP[2],0.30,'Maintenance barn and staff base: the back of house, sized by your crew');
       // Staff housing: one block per six crew, in a short row along the contour. Dorm-brown, not
       // patrol red, so it does not read as another patrol cabin.
@@ -3106,9 +3446,9 @@ const MountainGL = (() => {
       var shortCrew = (state._util != null && state._util < 0.98);
       var dormWin = shortCrew ? newArr() : windows;
       for(var di=0; di<nDorm; di++){
-        var dA = BOH + ((di%2?1:-1)*0.06*Math.ceil((di+1)/2)), dR = 0.62 + (di%3)*0.06;
+        var dA = BOH + ((di%2?1:-1)*0.09*Math.ceil((di+1)/2)), dR = 0.60 + (di%3)*0.08; // spread 0.06/0.06 -> 0.09/0.08 so the gable-house dorms clear each other
         var dP = atR(dA,dR), ds = popScale(dormT[di], now);
-        if(PROPS.patrol_cabin) pushMesh(village,dormWin,'patrol_cabin',dP[0],dP[1],dP[2],dA+Math.PI,0.66*ds);
+        (function(){ var s2=0.42*ds /* dorm slots are 0.06 rad apart, so the cabins stay small */, a2=dA+Math.PI, p=dP, sd=di*13+7; withRotation(village,dormWin,p[0],p[2],a2,function(b,l){ pushGableHouse(b,l,p[0],p[1],p[2],0.30*s2,0.24*s2,0.26*s2,0.50*s2,0.66*s2,{gableWindows:1,sideWindows:2,seed:sd}); }); })();
         if(!shortCrew) lamp(dP[0]+Math.cos(dA)*0.16,dP[1],dP[2]+Math.sin(dA)*0.16,0.24);
       }
       if(nDorm) hit(atR(BOH,0.66)[0],atR(BOH,0.66)[1]+0.2,atR(BOH,0.66)[2],0.28,'Staff housing: one block per six crew. Dark windows mean you are understaffed');
@@ -3118,9 +3458,9 @@ const MountainGL = (() => {
         var cA = BOH - 0.18 + ci*0.16, cP = atR(cA, 0.80), cs = popScale(catT[ci], now);
         if(PROPS.snowcat) pushMesh(landmarks,windows,'snowcat',cP[0],cP[1],cP[2],cA+Math.PI*0.5,0.85*cs);
       }
-      if(nCat && PROPS.snowmobile){ var mP = atR(BOH+0.24, 0.78); pushMesh(landmarks,windows,'snowmobile',mP[0],mP[1],mP[2],BOH,0.9); }
+      if(nCat && PROPS.snowmobile){ var mP = atR(BOH+0.40, 0.74); pushMesh(landmarks,windows,'snowmobile',mP[0],mP[1],mP[2],BOH,0.9); } // moved off the widened dorm slots
       // Snowmaking needs a plant, and it belongs out back with the rest of the machinery.
-      if(nTowers>0 && PROPS.pump_house){ var pP = atR(BOH-0.26, 0.68); pushMesh(landmarks,windows,'pump_house',pP[0],pP[1],pP[2],BOH,0.95); }
+      if(nTowers>0 && PROPS.pump_house){ var pP = atR(BOH-0.42, 0.70); pushMesh(landmarks,windows,'pump_house',pP[0],pP[1],pP[2],BOH,0.95); } // moved off the widened dorm slots
     }
     var nFigures = dc.crew;
     var crewH = LODGE_H*0.35, bodyH = crewH*0.7, headR = crewH*0.15, crewR=0.0825;
@@ -3155,13 +3495,16 @@ const MountainGL = (() => {
       buildRibbonPath(ribbons,tg,slotM.ang,0.08,slotM.bend,slotM.topR,0.9,0.015,closedSet[mi]?closedFill:[0.82,0.88,0.88],closedSet[mi]?closedFill:[0.82,0.88,0.88],rsc);
       var mscale=popScale(mt[mi],now)*0.14, postH=0.15;
       pushCyl(markers,mx,mBase,mz,0.012,postH,5,c3(PAL.liftSteel));
-      var signCol = slotM.diff===0?[0.29,0.55,0.23]:(slotM.diff===1?[0.18,0.37,0.66]:[0.1,0.1,0.1]);
+      var signCol = slotM.diff===0?[0.30,0.50,0.27]:(slotM.diff===1?[0.22,0.37,0.58]:[0.12,0.12,0.13]);
       pushPlate(markers,mx,mBase+postH+mscale*0.5,mz,slotM.ang,mscale,mscale,signCol);
       hit(mx,mBase+0.15,mz,0.16,(closedSet[mi]?'CLOSED run (understaffed): ':'Run: ')+(slotM.diff===0?'green (beginner)':(slotM.diff===1?'blue (intermediate)':'black (expert)')));
     }
     if(dc.chutes){ // chutes: real ribbon gullies, on the camera-facing side, same builder as runs
-      var chuteCol=[0.19,0.21,0.25]; // dark slate gullies (pure black read as a smear on laptops)
-      for(var cu=0;cu<3;cu++) buildRibbonPath(ribbons,tg, 0.3+(cu-1)*0.16, 0,0, 0.03,0.4, 0.12, chuteCol,chuteCol, 1);
+      // 2026-09-19: the old 0.12-wide dark-slate ribbons were the "black band down the front" an
+      // outside review flagged (not the cable, not the run border). Now narrow snow-filled
+      // couloirs with rock-grey walls, so they read as chutes instead of a smear.
+      var chuteFill=[0.80,0.84,0.91], chuteWall=[0.36,0.34,0.35];
+      for(var cu=0;cu<3;cu++) buildRibbonPath(ribbons,tg, 0.3+(cu-1)*0.16, 0,0, 0.03,0.4, 0.075, chuteFill,chuteWall, 1);
     }
     var bt = stamp('bar',nClosed);
     for(var bk=0;bk<nClosed;bk++){
@@ -3203,7 +3546,7 @@ const MountainGL = (() => {
     if(dc.summitLodge){ // summit restaurant on the shoulder above the top of lift 1
       var smA=0.78, smR=0.34, smX=Math.cos(smA)*smR*R, smZ=Math.sin(smA)*smR*R, smH=heightAt(smX,smZ,tg.rng2,tg.ridgeA);
       var smt=stamp('summit',1), sms=popScale(smt[0],now);
-      pushAFrameLodge(landmarks,windows,smX,smH,smZ,0.42*sms);
+      pushChaletLodge(landmarks,windows,smX,smH,smZ,0.42*sms); // resort-wide extension: summit restaurant on the lodge recipe
       pushPlate(landmarks,smX+Math.cos(smA)*0.22*sms,smH+0.14*sms,smZ+Math.sin(smA)*0.22*sms,smA,0.16*sms,0.07*sms,c3(PAL.crew));
       hit(smX,smH+0.15,smZ,0.3,'Summit restaurant: season 5+, $40 of runs cut');
       lamp(smX,smH,smZ,0.30);
@@ -3228,7 +3571,7 @@ const MountainGL = (() => {
       pushCyl(gate,bX-btx*0.09,bH,bZ-btz*0.09,0.012,0.2*bs,5,c3(PAL.liftSteel));
       pushCyl(gate,bX+btx*0.09,bH,bZ+btz*0.09,0.012,0.2*bs,5,c3(PAL.liftSteel));
       pushPlate(gate,bX,bH+0.26*bs,bZ,bA,0.3*bs,0.14*bs,[1,1,1]);
-      pushPlate(gate,bX+Math.cos(bA)*0.004,bH+0.26*bs,bZ+Math.sin(bA)*0.004,bA,0.26*bs,0.1*bs, bb%2?[0.18,0.37,0.66]:c3(PAL.crew));
+      pushPlate(gate,bX+Math.cos(bA)*0.004,bH+0.26*bs,bZ+Math.sin(bA)*0.004,bA,0.26*bs,0.1*bs, bb%2?[0.26,0.40,0.58]:[0.80,0.48,0.30]);
       hit(bX,bH+0.26,bZ,0.2,'Billboard: $4 of cumulative Marketing');
     }
     // Hire: pale ghost figures lined up at the lodge door for crew hired this season (they start next season)
@@ -3401,9 +3744,10 @@ const MountainGL = (() => {
     // The camera pitches down ~10 degrees (diorama view): the horizon sits in the upper third
     // and the water plane shows around the island. uHz is that horizon's NDC y for the sky shader.
     var eyeDist=11.0, eyeH=3.5, tgtY=1.75;
-    var eye=[Math.cos(yaw)*eyeDist, eyeH, Math.sin(yaw)*eyeDist];
-    var view = m4LookAt(eye,[0,tgtY,0],[0,1,0]);
-    var horizonNdc = Math.tan(Math.atan2(eyeH-tgtY,eyeDist))/Math.tan(0.425);
+    var eye=[Math.cos(yaw)*eyeDist, eyeH, Math.sin(yaw)*eyeDist], tgt=[0,tgtY,0];
+    if(ART.cam){ eye=ART.cam.eye; tgt=ART.cam.tgt; } // dev close-range camera (setArt({cam:{eye,tgt}})), never set in play
+    var view = m4LookAt(eye,tgt,[0,1,0]);
+    var horizonNdc = Math.tan(Math.atan2(eye[1]-tgt[1],Math.hypot(eye[0]-tgt[0],eye[2]-tgt[2])))/Math.tan(0.425);
     var proj = m4Persp(0.85, glCanvas.width/glCanvas.height, 0.1, 50);
     var vp = m4Mul(proj,view); lastVP = vp;
     var model = m4Id(), mvp = m4Mul(vp,model);
@@ -3423,19 +3767,26 @@ const MountainGL = (() => {
     gl.uniform3fv(gl.getUniformLocation(SPROG,'uHor'), skyHor);
     gl.uniform2fv(gl.getUniformLocation(SPROG,'uSunScr'), [sunNdcX, 1-2*sf]);
     gl.uniform3fv(gl.getUniformLocation(SPROG,'uGlow'), [1,0.92,0.78]);
-    gl.uniform3fv(gl.getUniformLocation(SPROG,'uWater'), WATER_RIM);
+    // floating island (art pass): below the horizon the sky deepens toward the top tone instead of
+    // showing a water plane, which is how the reference illustration sits its island in the sky
+    gl.uniform3fv(gl.getUniformLocation(SPROG,'uWater'), ART.float?lerp3(skyHor,skyTop,0.7):WATER_RIM);
     gl.uniform1f(gl.getUniformLocation(SPROG,'uHz'), horizonNdc);
+    gl.uniform1f(gl.getUniformLocation(SPROG,'uGrain'), ART.skyGrain);
+    gl.uniform1f(gl.getUniformLocation(SPROG,'uFloat'), ART.float?1:0);
+    gl.uniform1f(gl.getUniformLocation(SPROG,'uClouds'), ART.clouds&&state.snow!=='powder'?1:0); // powder days are already overcast
+    gl.uniform1f(gl.getUniformLocation(SPROG,'uAspect'), glCanvas.width/glCanvas.height);
     gl.bindBuffer(gl.ARRAY_BUFFER,skyBuf);
     var skyAP=gl.getAttribLocation(SPROG,'aPos'); gl.enableVertexAttribArray(skyAP); gl.vertexAttribPointer(skyAP,2,gl.FLOAT,false,0,0);
     gl.drawArrays(gl.TRIANGLES,0,6); drawCalls++;
     gl.enable(gl.DEPTH_TEST);
-    if(!waterBuf) waterBuf=buildWater();
-    drawUnlit(waterBuf,mvp);
+    if(!ART.float){ if(!waterBuf) waterBuf=buildWater(); drawUnlit(waterBuf,mvp); }
     gl.useProgram(PROG); resetAttribs();
     gl.uniform3fv(gl.getUniformLocation(PROG,'uSunDir'), sunDir);
-    gl.uniform3fv(gl.getUniformLocation(PROG,'uSunCol'), dusk?[0.90,0.80,0.70]:[1,0.94,0.84]);
-    gl.uniform3fv(gl.getUniformLocation(PROG,'uSkyCol'), state.snow==='drought'?[0.80,0.76,0.70]:[0.70,0.76,0.88]);
-    gl.uniform3fv(gl.getUniformLocation(PROG,'uGndCol'), [0.46,0.40,0.32]);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uSunCol'), dusk?[0.90,0.80,0.70]:[1.0,0.95,0.86]); // art pass: cleaner cream, the old amber turned the front snowfield tan
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uSkyCol'), state.snow==='drought'?[0.80,0.76,0.70]:[0.64,0.75,0.80]);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uGndCol'), [0.54,0.49,0.42]);
+    gl.uniform4fv(gl.getUniformLocation(PROG,'uArt'), [ART.band,ART.ink,ART.inkPow,ART.grain]);
+    gl.uniform3fv(gl.getUniformLocation(PROG,'uInk'), [0.15,0.14,0.15]);
     gl.uniform3fv(gl.getUniformLocation(PROG,'uFogCol'), fogCol);
     gl.uniform2fv(gl.getUniformLocation(PROG,'uFog'), [fogStart,fogRange]);
     gl.uniform3fv(gl.getUniformLocation(PROG,'uEye'), eye);
@@ -3455,7 +3806,10 @@ const MountainGL = (() => {
     gl.uniformMatrix4fv(gl.getUniformLocation(PROG,'uModel'),false,model);
     gl.drawElements(gl.TRIANGLES,cache.tg.idx.length,gl.UNSIGNED_SHORT,0); drawCalls++;
     var dp=dynProps;
+    // the plinth never receives the shadow map (its own facets self-shadowed into stripes)
+    gl.uniform1f(gl.getUniformLocation(PROG,'uShadowOn'), 0);
     drawBatch(dp.skirt,mvp,model);
+    gl.uniform1f(gl.getUniformLocation(PROG,'uShadowOn'), shadowOn?1:0);
     drawBatch(cache.trees.small,mvp,model); drawBatch(cache.trees.med,mvp,model); drawBatch(cache.trees.big,mvp,model);
     drawBatch(dp.landmarks,mvp,model);
     drawBatch(dp.towers,mvp,model); drawBatch(dp.cable,mvp,model); drawBatch(chairsBuf.chairs,mvp,model); drawBatch(dp.gondolas,mvp,model); drawBatch(dp.lodge,mvp,model);
@@ -3573,7 +3927,13 @@ const MountainGL = (() => {
     }
     return best;
   }
-  return { init, setState, setYaw, getYaw, render, selfTest, quality, hitTest, setReveal };
+  // setArt({band,ink,inkPow,grain,skyGrain,float, pal:{snowLit:[r,g,b],...}}): art-pass knobs for
+  // the palette tournament; rebuilds terrain colours and props so PAL changes land everywhere.
+  function setArt(o){
+    o=o||{}; for(var k in o){ if(k==='pal'){ for(var q in o.pal) PAL[q]=o.pal[q]; } else ART[k]=o[k]; }
+    if(state && cache.tg) onStateChanged(); propsKey=null; shadowKey=null;
+  }
+  return { init, setState, setYaw, getYaw, render, selfTest, quality, hitTest, setReveal, setArt };
 })();
 window.__selfTest = () => MountainGL.selfTest();
 // Mountain-view frame driver, called from loop() exactly like the old diorama's renderMountain():
