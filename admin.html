@@ -114,7 +114,12 @@
 <header>
   <h1>Chasing Powder</h1>
   <span class="badge">Instructor Console</span>
-  <span id="phaseChip" class="phase-chip" style="margin-left:auto">lobby</span>
+  <!-- The live code sits in the header from here on (2026-09-18). It used to appear only on the
+       create screen, which is hidden the moment the game starts, so once a second game existed
+       neither screen showed a code and a team tab silently left in the earlier game was
+       indistinguishable from a broken board. -->
+  <span id="headerCode" class="badge" style="margin-left:auto;display:none">Game <b id="headerCodeVal"></b></span>
+  <span id="phaseChip" class="phase-chip" style="margin-left:0.6rem">lobby</span>
 </header>
 <main>
   <div id="msg"></div>
@@ -390,6 +395,13 @@ function esc(s) {
 function setPhaseChip(phase) {
   document.getElementById('phaseChip').textContent = phase;
 }
+// Keep the live join code in the header for every section, not just the create screen.
+function showHeaderCode(){
+  const wrap = document.getElementById('headerCode'), val = document.getElementById('headerCodeVal');
+  if (!wrap || !val || !JOIN_CODE) return;
+  val.textContent = JOIN_CODE;
+  wrap.style.display = '';
+}
 function showSection(id) {
   ['secCreate', 'secLobby', 'secBoard', 'secDashboard', 'secDebrief'].forEach(s => {
     const elx = document.getElementById(s);
@@ -447,6 +459,7 @@ async function createGame() {
   await logDecisionForSeasonNum(null, 0, 'game_created', { join_code: JOIN_CODE, seed });
 
   document.getElementById('joinCodeDisplay').textContent = JOIN_CODE;
+  showHeaderCode();
   document.getElementById('joinCodeBox').style.display = '';
   document.getElementById('secLobby').style.display = '';
   msg('Game created. Join code: ' + JOIN_CODE, 'ok');
@@ -464,6 +477,7 @@ async function resumeGame() {
   applyWorldRoster();
   CUR_SEASON = g.season || 0;
   document.getElementById('joinCodeDisplay').textContent = JOIN_CODE;
+  showHeaderCode();
   document.getElementById('joinCodeBox').style.display = '';
   setPhaseChip(g.phase);
   await refreshTeams();

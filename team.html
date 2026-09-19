@@ -195,6 +195,11 @@
     cursor:pointer;display:block;margin:0 auto;}
   #stepDots .dot.on{background:var(--gold);border-color:var(--gold);}
   #stepDots .dotLabel{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;}
+  #rejoinNote{flex:0 0 auto;position:relative;z-index:20;padding:8px 14px;background:var(--panel2);border-bottom:1px solid var(--gold);
+    color:var(--text);font-size:12.5px;line-height:1.5;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
+  #rejoinNote[hidden]{display:none;}
+  #rejoinNote b{color:var(--gold);letter-spacing:.06em;}
+  #rejoinNote a{color:var(--teal);}
   #stepDots .turnBadge{font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;
     color:#1b1205;background:var(--gold);border-radius:8px;padding:2px 6px;line-height:1.3;
     box-shadow:0 0 0 0 rgba(224,182,91,.75);animation:turnPulse 1.9s ease-out infinite;}
@@ -246,6 +251,7 @@
 <div id="hud">
   <h1>CHASING POWDER</h1>
   <div class="stat" id="teamStat"><span class="hudIcon" aria-hidden="true">◆</span>Resort <b id="teamName">&nbsp;</b></div>
+  <div class="stat" id="gameStat" hidden><span class="hudIcon" aria-hidden="true">#</span>Game <b id="gameCodeHud">&nbsp;</b></div>
   <div class="stat"><span class="hudIcon" aria-hidden="true">▦</span>Season <b id="seasonNum">1</b>/6</div>
   <div class="stat"><span class="hudIcon" aria-hidden="true">●</span>Cash <b id="cashNum">$60</b></div>
   <div class="stat"><span class="hudIcon" aria-hidden="true">↗</span>Cum. Profit <b id="profitNum">$0</b></div>
@@ -256,6 +262,7 @@
   <button id="mapThemeBtn" title="Toggle the map ground between night and paper">Map: Night</button>
 </div>
 
+<div id="rejoinNote" hidden></div>
 <div id="main">
   <div id="boardWrap">
     <canvas id="board"></canvas>
@@ -1112,6 +1119,7 @@ let endOverlayDismissed = false; // once the student closes the debrief, syncGam
 let stageGuess = null;
 let PHASE_SEQ = 0;          // monotonic guard so a slow render never paints a stale phase (ranch pattern)
 let pollTimer = null;
+let REJOINED = false;       // this tab restored a saved join rather than being joined by hand
 const JOIN_KEY = 'powder_join_v1';
 
 function note(text, err){ const el = document.getElementById('ctlNote'); el.textContent = text || ''; el.style.color = err ? 'var(--danger)' : 'var(--dim)'; }
@@ -1190,6 +1198,35 @@ async function tryRejoin(){
   return true;
 }
 
+// Which game am I actually in? Put the code where both the table and the instructor can read it
+// off a screen without digging, because a silent rejoin into last hour's game looks exactly like
+// the board being broken.
+function showGameCode(){
+  const el = document.getElementById('gameCodeHud'), wrap = document.getElementById('gameStat');
+  if (!el || !wrap || !GAME) return;
+  el.textContent = GAME.join_code || '?????';
+  wrap.hidden = false;
+}
+// A restored join is announced rather than assumed. REJOINED is set by the boot path below.
+function noteRejoin(){
+  if (!REJOINED || !GAME) return;
+  const el = document.getElementById('rejoinNote');
+  if (!el) return;
+  el.innerHTML = '<span>Picked up where you left off, in game <b>' + (GAME.join_code || '?????')
+    + '</b> as <b>' + (ME && ME.name ? ME.name : 'your table')
+    + '</b>. If your instructor just read out a different code, this is the wrong game.</span>'
+    + '<a href="#" id="rejoinLeave">Join a different game</a>'
+    + '<a href="#" id="rejoinDismiss" style="color:var(--dim);">Dismiss</a>';
+  el.hidden = false;
+  // enterGame() sizes the board canvas from the space available BEFORE this bar exists, so the
+  // canvas keeps its old height and paints over the bar. Re-run the same sizing pass now that the
+  // bar is taking its share of the column, and again after a dismiss gives that space back.
+  if (typeof resize === 'function') resize();
+}
+document.addEventListener('click', e => {
+  if (e.target && e.target.id === 'rejoinLeave') { e.preventDefault(); forgetJoin(); location.href = location.pathname; }
+  if (e.target && e.target.id === 'rejoinDismiss') { e.preventDefault(); document.getElementById('rejoinNote').hidden = true; if (typeof resize === 'function') resize(); }
+});
 function forgetJoin(){ try { localStorage.removeItem(JOIN_KEY); } catch (e) {} }
 document.getElementById('leaveGameLink').addEventListener('click', (e) => { e.preventDefault(); forgetJoin(); location.href = location.pathname; });
 
@@ -1198,6 +1235,7 @@ document.getElementById('leaveGameLink').addEventListener('click', (e) => { e.pr
 // ==========================================================================
 function enterGame(){
   document.getElementById('teamName').textContent = ME.name;
+  showGameCode();
   hideOverlays();
   supa.channel('pgame-' + GAME.id)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'powder_games', filter: 'id=eq.' + GAME.id }, () => syncGame())
@@ -1235,7 +1273,8 @@ async function syncGame(){
 }
 
 function showLobbyWait(text){
-  document.getElementById('waitTitle').textContent = 'You are in: ' + ME.name;
+  document.getElementById('waitTitle').textContent = 'You are in: ' + ME.name
+    + (GAME && GAME.join_code ? ' (game ' + GAME.join_code + ')' : '');
   document.getElementById('waitText').textContent = text || 'Waiting for the instructor to open season 1. Keep this tab open; the board appears on its own.';
   const rows = [];
   for (let i = 0; i < TEAM_SEATS; i++) { const t = TEAM_BY_SEAT[i]; rows.push('Seat ' + (i + 1) + ': ' + (t ? (t.is_ai ? t.name + ' (AI)' : t.name) : 'open')); }
@@ -3663,7 +3702,7 @@ spend = { runs:0, lodging:0, events:0, marketing:0, opsCost:8, hire:0 };
   }
   const code = new URLSearchParams(location.search).get('code');
   if (code) document.getElementById('joinCode').value = code.toUpperCase();
-  if (await tryRejoin()) { enterGame(); return; }
+  if (await tryRejoin()) { REJOINED = true; enterGame(); noteRejoin(); return; }
   forgetJoin();
   showOverlay('seatOverlay');
 })();
