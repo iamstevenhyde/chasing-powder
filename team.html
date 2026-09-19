@@ -2378,14 +2378,29 @@ const MountainGL = (() => {
       var a = -1.1 + (i/13)*2.2 + (rnd()-0.5)*0.06; // evenly spaced, all camera-facing, small seeded jitter
       var topR = 0.15 + rnd()*0.25; // staggered start so runs don't all converge at the summit
       var bend = (rnd()-0.5)*0.1; // one gentle mid-corridor lateral bend, on top of the S-curve
-      slots.push({ang:a, diff: i%3, topR:topR, bend:bend});
+      // Lee bowl (2026-09-19, phase 2): the last three of the fourteen slots move off the front
+      // fan and onto Sun Peak's broad shoulder. Slots 0-10 are byte-identical to before, because
+      // the three rnd() draws above happen in the same order and count for every i; only how a
+      // and topR are composed changes, and only for i >= 11.
+      // 1.50-1.90 rad, not the 1.15-1.35 first proposed: that was barely past the old fan edge
+      // (which already reached 1.1) and ran under the billboard rim, which spans 0.55-1.40 at
+      // r 0.955. This band clears the billboards entirely and sits on the shoulder heightAt
+      // itself describes as broad and skiable, so the runs read as a different face of the hill.
+      if(i>=11){ a = 1.50 + (i-11)*0.20 + (a - (-1.1 + (i/13)*2.2)); topR = 0.26 + (topR-0.15)*0.48; }
+      slots.push({ang:a, diff: i>=11 ? 2 : i%3, topR:topR, bend:bend, lee: i>=11});
     }
     return slots;
   }
   function activeRunIndices(state,slots){
     var count=mtnCounts(state).runs, ids=[];
     for(var i=0;i<slots.length;i++) ids.push(i);
-    ids.sort(function(a,b){return Math.abs(slots[a].ang-0.3)-Math.abs(slots[b].ang-0.3);});
+    // The bowl is hike-to expert terrain, so it is shut until the expert reach gate is fully open
+    // and then becomes part of the mountain. A large penalty keeps it out of the sort entirely
+    // before that; a modest bonus afterwards brings one or two lee runs in at a realistic run
+    // count instead of leaving them as the last picks nobody ever reaches.
+    var leeOpen = (state._reachHi||0) >= 0.999;
+    var lean = function(i){ return slots[i].lee ? (leeOpen ? -0.35 : 99) : 0; };
+    ids.sort(function(a,b){return (Math.abs(slots[a].ang-0.3)+lean(a))-(Math.abs(slots[b].ang-0.3)+lean(b));});
     return ids.slice(0,count);
   }
   function terrainColor(state,tg,slots){
@@ -3040,7 +3055,15 @@ const MountainGL = (() => {
       }
       var nV = dc.village;
       var vt = stamp('vil',nV);
-      var VSLOTS=[[0.52,-0.08],[0.52,0.08],[0.60,-0.08],[0.60,0.08],[0.52,-0.22],[0.52,0.22],[0.60,-0.22],[0.60,0.22],[0.68,-0.08],[0.68,0.08]];
+      // Lodging used to sit in a 25-degree wedge at the plaza, which read as cramped (Steven,
+      // 2026-09-19). It now sits to the RIGHT of the spa (angle -0.761, r 0.856) and the helipad
+      // (angle -0.820, r 0.490) and climbs the flank, so the village reads as a hillside rather
+      // than a car park. Two lanes at -0.86 and -1.02 deliberately thread BETWEEN the front run
+      // corridors, which sit at -0.762, -0.931 and -1.100: a corridor is only about 0.028 rad
+      // wide at this radius, so the nearest lane clears one by roughly 0.07 rad.
+      // Ordered from the outer apron inward, so the first buildings appear near the base and
+      // later ones climb, rather than the village sprouting at the top.
+      var VSLOTS=[[0.88,-0.86],[0.88,-1.02],[0.80,-0.85],[0.80,-1.03],[0.72,-0.87],[0.72,-1.01],[0.64,-0.86],[0.64,-1.02],[0.58,-0.845],[0.58,-1.035]];
       for(var i2=0;i2<nV;i2++){
         var vSlot = VSLOTS[i2%VSLOTS.length];
         var vAng = vSlot[1], vR = vSlot[0];
@@ -3055,6 +3078,49 @@ const MountainGL = (() => {
         lamp(vx+Math.cos(vAng)*0.18,vh,vz+Math.sin(vAng)*0.18,0.28);
       }
       if((state.built.lodging||0)>=18) pushSpa(village,windows,tg);
+    }
+    // ---- Back of house (2026-09-19) ---------------------------------------------------------
+    // Two thirds of the disc held nothing but terrain and trees, because every landmark angle was
+    // hand-picked near the default camera yaw of 0.3. The apron behind Sentinel, centred on pi, is
+    // never on screen at the reveal and is where a real resort puts the things guests never see.
+    // Counts are derived LOCALLY and deliberately never added to what mtnCounts returns, so the
+    // __selfTest counters the demo gate reads are unaffected. Geometry goes into the existing
+    // village and landmarks buffers, so this adds no gl draw call.
+    // Band: pi +- 0.30 rad, radius 0.55-0.80 R. That clears the lake (-0.56), both lift flanks
+    // (they stop at +-0.6), the run fan (+-1.1) and the billboard rim (0.55-1.40 at r 0.955).
+    var bohStaff = state.staff || 0;
+    if(bohStaff > 0){
+      var BOH = Math.PI;
+      var atR = function(a,r){ var x=Math.cos(a)*r*R, z=Math.sin(a)*r*R; return [x,heightAt(x,z,tg.rng2,tg.ridgeA),z]; };
+      // One big shape first: the maintenance barn. A rental_shack, wider and darker than the
+      // guest-facing ones, so it reads as a shed and not another cabin.
+      var barnT = stamp('boh_barn',1), barnP = atR(BOH, 0.58), barnS = popScale(barnT[0], now);
+      if(PROPS.rental_shack) pushMesh(landmarks,windows,'rental_shack',barnP[0],barnP[1],barnP[2],BOH+Math.PI,1.05*barnS);
+      hit(barnP[0],barnP[1]+0.2,barnP[2],0.30,'Maintenance barn and staff base: the back of house, sized by your crew');
+      // Staff housing: one block per six crew, in a short row along the contour. Dorm-brown, not
+      // patrol red, so it does not read as another patrol cabin.
+      var nDorm = Math.min(6, Math.ceil(bohStaff/6)), dormT = stamp('boh_dorm', nDorm);
+      // Understaffed draws the row with its lit windows thrown away, so the dorms read as dark and
+      // empty. That is the "capacity you cannot staff" lesson stated in the picture, off a field
+      // the engine already sets, with nothing computed here.
+      var shortCrew = (state._util != null && state._util < 0.98);
+      var dormWin = shortCrew ? newArr() : windows;
+      for(var di=0; di<nDorm; di++){
+        var dA = BOH + ((di%2?1:-1)*0.06*Math.ceil((di+1)/2)), dR = 0.62 + (di%3)*0.06;
+        var dP = atR(dA,dR), ds = popScale(dormT[di], now);
+        if(PROPS.patrol_cabin) pushMesh(village,dormWin,'patrol_cabin',dP[0],dP[1],dP[2],dA+Math.PI,0.66*ds);
+        if(!shortCrew) lamp(dP[0]+Math.cos(dA)*0.16,dP[1],dP[2]+Math.sin(dA)*0.16,0.24);
+      }
+      if(nDorm) hit(atR(BOH,0.66)[0],atR(BOH,0.66)[1]+0.2,atR(BOH,0.66)[2],0.28,'Staff housing: one block per six crew. Dark windows mean you are understaffed');
+      // The yard: groomers parked out back, one per 60 units of capacity.
+      var nCat = Math.min(3, Math.ceil((state.cap||0)/60)), catT = stamp('boh_cat', nCat);
+      for(var ci=0; ci<nCat; ci++){
+        var cA = BOH - 0.18 + ci*0.16, cP = atR(cA, 0.80), cs = popScale(catT[ci], now);
+        if(PROPS.snowcat) pushMesh(landmarks,windows,'snowcat',cP[0],cP[1],cP[2],cA+Math.PI*0.5,0.85*cs);
+      }
+      if(nCat && PROPS.snowmobile){ var mP = atR(BOH+0.24, 0.78); pushMesh(landmarks,windows,'snowmobile',mP[0],mP[1],mP[2],BOH,0.9); }
+      // Snowmaking needs a plant, and it belongs out back with the rest of the machinery.
+      if(nTowers>0 && PROPS.pump_house){ var pP = atR(BOH-0.26, 0.68); pushMesh(landmarks,windows,'pump_house',pP[0],pP[1],pP[2],BOH,0.95); }
     }
     var nFigures = dc.crew;
     var crewH = LODGE_H*0.35, bodyH = crewH*0.7, headR = crewH*0.15, crewR=0.0825;
@@ -3075,7 +3141,7 @@ const MountainGL = (() => {
       var scc = popScale(ct[gi],now);
       pushCyl(crew,cx,ch,cz,crewR,bodyH*scc,5,c3(PAL.crew));
       pushOcta(crew,cx,ch+bodyH*scc+headR*scc,cz,headR*scc,[0.55,0.28,0.06]);
-      if(within===1) hit(cx,ch+0.1,cz,0.2,'Crew on the hill: one peg per 5 staff');
+      if(within===1) hit(cx,ch+0.1,cz,0.2,'Crew on the hill: one peg per 9 staff');
     }    var nRuns2 = dc.runs, nClosed = dc.closed;
     // closed runs: first nClosed of the already camera-ordered activeIdx list (nearest angle 0.3)
     var closedSet={}; for(var ck=0;ck<nClosed;ck++) closedSet[activeIdx[ck]]=true;
