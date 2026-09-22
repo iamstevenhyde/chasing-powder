@@ -2081,8 +2081,15 @@ function mtnPreviewState(){
 // with the engine narration's own 0.98 threshold.
 function mtnCounts(state){
   const runs = Math.min(14, Math.ceil((state.built.runs||0)/4));
-  const towers = Math.min(14, Math.max(0, Math.floor((state.cap-100)/4)));
-  const crew = Math.min(24, Math.round((state.staff||0)/9));
+  // 2026-09-22 (Steven, live test: "the mountain has the crew housing in it at default"): every
+  // count is sized from what DECISIONS added, never from the engine's starting resort. The engine
+  // starts each resort at CONFIG.startStaff (100) and CONFIG.startCap (100), so anything read off
+  // raw staff/cap draws before the first lock-in. Towers already subtracted 100; it now reads the
+  // CONFIG constant, and crew pegs count hired crews (STAFF_PER_HIRE staff each) the same way.
+  const capAdded = Math.max(0, (state.cap||0) - CONFIG.startCap);
+  const hired = Math.max(0, (state.staff||0) - CONFIG.startStaff);
+  const towers = Math.min(14, Math.floor(capAdded/4));
+  const crew = Math.min(24, Math.round(hired/CONFIG.STAFF_PER_HIRE));
   const village = state.lodgeBuilt ? Math.min(10, Math.ceil((state.built.lodging||0)/4)) : 0;
   const util = state._util != null ? state._util : 1;
   const closed = util < 0.98 ? Math.min(runs, Math.max(1, Math.round(runs*(1-util)*2))) : 0;
@@ -3580,18 +3587,23 @@ var QUALITY = {shadows:true, shadowStrength:0.58}, SHADOW_SIZE = 2048, shadowFbo
     // village and landmarks buffers, so this adds no gl draw call.
     // Band: pi +- 0.30 rad, radius 0.55-0.80 R. That clears the lake (-0.56), both lift flanks
     // (they stop at +-0.6), the run fan (+-1.1) and the billboard rim (0.55-1.40 at r 0.955).
-    var bohStaff = state.staff || 0;
-    if(bohStaff > 0){
+    // 2026-09-22: sized from what decisions ADDED (staff above CONFIG.startStaff, capacity above
+    // CONFIG.startCap), not from raw state.staff / state.cap, which start at 100/100 and drew the
+    // barn, six dorms and two groomers before the first lock-in (Steven, live test, class day).
+    var bohStaff = Math.max(0, (state.staff||0) - CONFIG.startStaff);
+    var bohCap = Math.max(0, (state.cap||0) - CONFIG.startCap);
+    var nCat = Math.min(3, Math.ceil(bohCap/20));
+    if(bohStaff > 0 || nCat > 0){
       var BOH = Math.PI;
       var atR = function(a,r){ var x=Math.cos(a)*r*R, z=Math.sin(a)*r*R; return [x,heightAt(x,z,tg.rng2,tg.ridgeA),z]; };
       // One big shape first: the maintenance barn. A rental_shack, wider and darker than the
       // guest-facing ones, so it reads as a shed and not another cabin.
       var barnT = stamp('boh_barn',1), barnP = atR(BOH, 0.53), barnS = popScale(barnT[0], now); // 0.58 -> 0.53: the gable-house barn is longer than the shack prop was
       (function(){ var bs=0.80*barnS; withRotation(landmarks,windows,barnP[0],barnP[2],BOH+Math.PI,function(b,l){ pushGableHouse(b,l,barnP[0],barnP[1],barnP[2],0.44*bs,0.30*bs,0.30*bs,0.56*bs,0.9*bs,{sideWindows:2,seed:41}); }); })();
-      hit(barnP[0],barnP[1]+0.2,barnP[2],0.30,'Maintenance barn and staff base: the back of house, sized by your crew');
-      // Staff housing: one block per six crew, in a short row along the contour. Dorm-brown, not
-      // patrol red, so it does not read as another patrol cabin.
-      var nDorm = Math.min(6, Math.ceil(bohStaff/6)), dormT = stamp('boh_dorm', nDorm);
+      hit(barnP[0],barnP[1]+0.2,barnP[2],0.30,'Maintenance barn and staff base: the back of house, sized by the crews you hired and the capacity you added');
+      // Staff housing: one block per crew hired (STAFF_PER_HIRE staff), in a short row along the
+      // contour. Dorm-brown, not patrol red, so it does not read as another patrol cabin.
+      var nDorm = Math.min(6, Math.ceil(bohStaff/CONFIG.STAFF_PER_HIRE)), dormT = stamp('boh_dorm', nDorm);
       // Understaffed draws the row with its lit windows thrown away, so the dorms read as dark and
       // empty. That is the "capacity you cannot staff" lesson stated in the picture, off a field
       // the engine already sets, with nothing computed here.
@@ -3603,9 +3615,9 @@ var QUALITY = {shadows:true, shadowStrength:0.58}, SHADOW_SIZE = 2048, shadowFbo
         (function(){ var s2=0.42*ds /* dorm slots are 0.06 rad apart, so the cabins stay small */, a2=dA+Math.PI, p=dP, sd=di*13+7; withRotation(village,dormWin,p[0],p[2],a2,function(b,l){ pushGableHouse(b,l,p[0],p[1],p[2],0.30*s2,0.24*s2,0.26*s2,0.50*s2,0.66*s2,{gableWindows:1,sideWindows:2,seed:sd}); }); })();
         if(!shortCrew) lamp(dP[0]+Math.cos(dA)*0.16,dP[1],dP[2]+Math.sin(dA)*0.16,0.24);
       }
-      if(nDorm) hit(atR(BOH,0.66)[0],atR(BOH,0.66)[1]+0.2,atR(BOH,0.66)[2],0.28,'Staff housing: one block per six crew. Dark windows mean you are understaffed');
-      // The yard: groomers parked out back, one per 60 units of capacity.
-      var nCat = Math.min(3, Math.ceil((state.cap||0)/60)), catT = stamp('boh_cat', nCat);
+      if(nDorm) hit(atR(BOH,0.66)[0],atR(BOH,0.66)[1]+0.2,atR(BOH,0.66)[2],0.28,'Staff housing: one block per crew hired. Dark windows mean you are understaffed');
+      // The yard: groomers parked out back, one per 20 units of capacity ADDED above the start.
+      var catT = stamp('boh_cat', nCat);
       for(var ci=0; ci<nCat; ci++){
         var cA = BOH - 0.18 + ci*0.16, cP = atR(cA, 0.80), cs = popScale(catT[ci], now);
         if(PROPS.snowcat) pushMesh(landmarks,windows,'snowcat',cP[0],cP[1],cP[2],cA+Math.PI*0.5,0.85*cs);
@@ -3633,7 +3645,7 @@ var QUALITY = {shadows:true, shadowStrength:0.58}, SHADOW_SIZE = 2048, shadowFbo
       var scc = popScale(ct[gi],now);
       pushCyl(crew,cx,ch,cz,crewR,bodyH*scc,5,c3(PAL.crew));
       pushOcta(crew,cx,ch+bodyH*scc+headR*scc,cz,headR*scc,[0.55,0.28,0.06]);
-      if(within===1) hit(cx,ch+0.1,cz,0.2,'Crew on the hill: one peg per 9 staff');
+      if(within===1) hit(cx,ch+0.1,cz,0.2,'Crew on the hill: one peg per crew you hired');
     }    var nRuns2 = dc.runs, nClosed = dc.closed;
     // closed runs: first nClosed of the already camera-ordered activeIdx list (nearest angle 0.3)
     var closedSet={}; for(var ck=0;ck<nClosed;ck++) closedSet[activeIdx[ck]]=true;
