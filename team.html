@@ -198,6 +198,13 @@
   #rejoinNote{flex:0 0 auto;position:relative;z-index:20;padding:8px 14px;background:var(--panel2);border-bottom:1px solid var(--gold);
     color:var(--text);font-size:12.5px;line-height:1.5;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
   #rejoinNote[hidden]{display:none;}
+  /* 2026-09-22 (game FLCRP): an acquired/bankrupt seat gets an unmissable full-panel state
+     instead of the old 11.5px "you are a division of X" line, and the decision form is gone. */
+  #soldPanel{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:32px 20px;gap:14px;}
+  #soldPanel[hidden]{display:none;}
+  #soldPanel h2{font-family:var(--font-mono);letter-spacing:.08em;font-size:28px;color:var(--rust);margin:0;}
+  #soldPanel p{font-size:14px;line-height:1.6;color:var(--text);max-width:280px;margin:0;}
   #rejoinNote b{color:var(--gold);letter-spacing:.06em;}
   #rejoinNote a{color:var(--teal);}
   #stepDots .turnBadge{font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;
@@ -310,6 +317,10 @@
     </div>
   </div>
   <div id="side">
+    <div id="soldPanel" hidden>
+      <h2 id="soldTitle">SOLD</h2>
+      <p id="soldText"></p>
+    </div>
     <div id="stepDots">
       <div class="dotWrap"><span class="dot" data-step="0"></span><span class="dotLabel">Read</span></div>
       <div class="dotWrap"><span class="dot" data-step="1"></span><span class="dotLabel">Build</span></div>
@@ -348,6 +359,13 @@
 
 <div class="overlay" id="seatOverlay">
   <div class="card">
+    <div id="rejoinChoice" hidden style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line2);">
+      <h2 style="margin-top:0;">Rejoin your table?</h2>
+      <p>This browser was last in game <b id="rejoinChoiceCode"></b> as <b id="rejoinChoiceName"></b>.</p>
+      <button id="rejoinChoiceBtn">Rejoin <span id="rejoinChoiceCode2"></span></button>
+      <div class="msgline" id="rejoinChoiceMsg"></div>
+      <p style="margin-top:10px;font-size:12px;color:var(--dim);">Not your game? <a href="#" id="rejoinChoiceDismiss" style="color:var(--teal);">Join a different one below</a></p>
+    </div>
     <h2>Join your table's game</h2>
     <p>Your instructor reads out a five-letter code. Enter it and name your resort. Every table starts from the same mountain; what you do with it is the game.</p>
     <div class="joinRow"><input id="joinCode" maxlength="5" placeholder="CODE" autocomplete="off" spellcheck="false"></div>
@@ -446,7 +464,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
 <script src="config.js?v=d9a9a8b126"></script>
-<script src="engine-powder.js?v=c5886493aa"></script>
+<script src="engine-powder.js?v=6d7e4cf211"></script>
 <script>
 /* ============================================================
    CHASING POWDER, team client (shared world).
@@ -1183,20 +1201,53 @@ async function claimLowestSeat(name){
 // A refresh, a dropped wifi connection, or a closed laptop must not lose the seat. The join
 // token in localStorage re-identifies this browser as the same team. (The ranch client did not
 // do this and it is the one failure a live class cannot recover from mid-game.)
-async function tryRejoin(){
+// 2026-09-18 bug (NHVNF/BSXSH): this used to auto-reattach on load whenever the saved game looked
+// live, so a browser that was never closed after an old game kept quietly rejoining it. It now
+// only ever CHECKS whether a rejoin is offerable and returns the candidate; boot() below decides
+// whether to show it, and nothing reattaches until the student clicks Rejoin.
+async function checkForRejoin(){
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(JOIN_KEY) || 'null'); } catch (e) {}
-  if (!saved || !saved.teamId) return false;
-  if (!saved.at || Date.now() - saved.at > 12 * 3600 * 1000) return false; // a game lasts one class; older joins are stale
-  const urlCode = (new URLSearchParams(location.search).get('code') || '').toUpperCase();
-  if (urlCode && saved.code && urlCode !== String(saved.code).toUpperCase()) return false; // a link to a NEW game wins
+  if (!saved || !saved.teamId) return null;
+  if (!saved.at || Date.now() - saved.at > 12 * 3600 * 1000) return null; // a game lasts one class; older joins are stale
   const { data: t } = await supa.from('powder_teams').select('*').eq('id', saved.teamId).eq('join_token', saved.token).limit(1);
-  if (!t || !t.length) return false;
+  if (!t || !t.length) return null;
   const { data: g } = await supa.from('powder_games').select('*').eq('id', saved.gameId).limit(1);
-  if (!g || !g.length || g[0].status === 'done' || g[0].phase === 'ended') return false; // a finished game is never rejoined
-  ME = t[0]; MY_SEAT = ME.seat_index; GAME = g[0];
-  return true;
+  if (!g || !g.length) return null;
+  // only offer a rejoin into a game that is still actually being played
+  if (g[0].status === 'done' || !['lobby','board','resolve'].includes(g[0].phase)) return null;
+  return { team: t[0], game: g[0] };
 }
+function showRejoinChoice(candidate){
+  const el = document.getElementById('rejoinChoice');
+  if (!el) return;
+  el.dataset.teamId = candidate.team.id; el.dataset.gameId = candidate.game.id;
+  const code = candidate.game.join_code || '?????';
+  document.getElementById('rejoinChoiceCode').textContent = code;
+  document.getElementById('rejoinChoiceCode2').textContent = code;
+  document.getElementById('rejoinChoiceName').textContent = candidate.team.name;
+  el.hidden = false;
+}
+document.getElementById('rejoinChoiceBtn').addEventListener('click', async () => {
+  const el = document.getElementById('rejoinChoice');
+  const btn = document.getElementById('rejoinChoiceBtn');
+  btn.disabled = true;
+  const msgEl = document.getElementById('rejoinChoiceMsg');
+  const { data: t } = await supa.from('powder_teams').select('*').eq('id', el.dataset.teamId).limit(1);
+  const { data: g } = await supa.from('powder_games').select('*').eq('id', el.dataset.gameId).limit(1);
+  if (!t || !t.length || !g || !g.length) {
+    if (msgEl) { msgEl.textContent = 'That game is no longer available.'; msgEl.className = 'msgline err'; }
+    btn.disabled = false; return;
+  }
+  ME = t[0]; MY_SEAT = ME.seat_index; GAME = g[0]; REJOINED = true;
+  el.hidden = true;
+  enterGame(); noteRejoin();
+});
+document.getElementById('rejoinChoiceDismiss').addEventListener('click', (e) => {
+  e.preventDefault();
+  forgetJoin();
+  document.getElementById('rejoinChoice').hidden = true;
+});
 
 // Which game am I actually in? Put the code where both the table and the instructor can read it
 // off a screen without digging, because a silent rejoin into last hour's game looks exactly like
@@ -1350,6 +1401,26 @@ async function onNewSeason(){
   // on resolve, the board stays on Mountain for the reveal (setBoardView already ran above); only
   // the #side step resets to READ. Any other case (first load, rejoin) just resets both normally.
   showStep(0, { keepView: didResolve });
+  updateOutOfPlayState(p);
+}
+
+// A bought or bankrupt seat is done (2026-09-22, game FLCRP): the engine ignores anything it
+// submits from here on (chasing-powder.js idleOutOfPlay), so the decision form is pulled rather
+// than left up as a lie. Runs after every season change/rejoin; showStep() above always runs
+// first, so this has the last word on what #side actually shows.
+function updateOutOfPlayState(p){
+  const out = p.owner != null || p.bankrupt;
+  document.getElementById('soldPanel').hidden = !out;
+  ['stepDots','stepRead','stepBuild','stepPrice','stepNav'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.hidden = out;
+  });
+  if (out) document.getElementById('lockBtn').disabled = true;
+  if (out) {
+    document.getElementById('soldTitle').textContent = p.bankrupt ? 'BANKRUPT' : 'SOLD';
+    document.getElementById('soldText').textContent = p.bankrupt
+      ? 'Your resort ran out of cash and closed. Your game is over; your score is frozen where it stood.'
+      : 'SOLD to ' + seatName(p.owner) + '. Your resort is now part of ' + seatName(p.owner) + '. Your game is over.';
+  }
 }
 
 // Season narration, rebuilt from the state the instructor wrote back plus the world trace.
@@ -1729,7 +1800,9 @@ function updateBudget(){
   document.getElementById('budgetSpent').textContent = '$'+spent;
   document.getElementById('budgetTotal').textContent = '$'+BUDGET;
   document.getElementById('budgetLine').classList.toggle('over', spent>BUDGET);
-  document.getElementById('lockBtn').disabled = spent>BUDGET || GAME.phase !== 'board';
+  const p = engineState && engineState.resorts[engineState.playerIdx];
+  const outOfPlay = p && (p.owner != null || p.bankrupt);
+  document.getElementById('lockBtn').disabled = outOfPlay || spent>BUDGET || GAME.phase !== 'board';
 }
 function nearestSegName(target, segs){
   let best=null, bestD=Infinity;
@@ -4126,6 +4199,8 @@ function renderMountain(){
 // ==========================================================================
 document.getElementById('lockBtn').addEventListener('click', async ()=>{
   if (GAME.phase !== 'board') return;
+  const meNow = engineState && engineState.resorts[engineState.playerIdx];
+  if (meNow && (meNow.owner != null || meNow.bankrupt)) return;   // sold/bankrupt: nothing to submit
   const btn = document.getElementById('lockBtn');
   btn.disabled = true;
   const payload = {
@@ -4297,9 +4372,16 @@ spend = { runs:0, lodging:0, events:0, marketing:0, opsCost:8, hire:0 };
   }
   const code = new URLSearchParams(location.search).get('code');
   if (code) document.getElementById('joinCode').value = code.toUpperCase();
-  if (await tryRejoin()) { REJOINED = true; enterGame(); noteRejoin(); return; }
-  forgetJoin();
   showOverlay('seatOverlay');
+  // 2026-09-18 bug (NHVNF/BSXSH), fixed 2026-09-22: a link with its own ?code= always means a
+  // fresh join, so a rejoin is only ever offered when the page was opened bare.
+  if (!code) {
+    const candidate = await checkForRejoin();
+    if (candidate) showRejoinChoice(candidate);
+    else forgetJoin();
+  } else {
+    forgetJoin();
+  }
 })();
 loop();
 </script>

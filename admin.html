@@ -63,6 +63,7 @@
   .tag-ready    { background: #e7f3ea; color: #1a7a4a; }
   .tag-waiting  { background: #f7ecd8; color: var(--gold); }
   .tag-autolock { background: #fbe4dc; color: var(--rust); }
+  .tag-sold     { background: #eee; color: #777; }
   .ready-summary {
     display: inline-block; font-size: 0.92rem; font-weight: 700; padding: 0.3rem 0.8rem;
     border-radius: 4px; margin-bottom: 0.8rem; background: var(--panel); color: var(--muted);
@@ -141,6 +142,14 @@
         Join code: <span class="code" id="joinCodeDisplay"></span>
         <div class="status" style="margin-top:0.4rem">Share this code with students. They open team.html and enter it.</div>
       </div>
+      <!-- 2026-09-22 (VFTGZ/FLCRP bug): a reload or a second click on Create used to mint a fresh
+           game and orphan a lobby that already had teams seated. This prompt catches that instead
+           of a silent second game. -->
+      <div id="openGamePrompt" style="display:none;margin-top:0.8rem;padding:0.7rem;border:1px solid var(--border);border-radius:6px;background:var(--panel2,#fff8ec);">
+        <div id="openGamePromptText" style="margin-bottom:0.5rem"></div>
+        <button id="btnResumeOpen" class="secondary">Resume it</button>
+        <button id="btnCreateAnyway" class="secondary">Start a new one anyway</button>
+      </div>
     </div>
   </section>
 
@@ -157,6 +166,10 @@
       <div class="row" style="margin-top:1rem">
         <button id="btnStart" onclick="startGame()" disabled>Start Game</button>
         <span class="status">Requires at least one human team. Every open team seat is filled by AI; Vail and Alta join automatically.</span>
+      </div>
+      <div class="row" style="margin-top:0.6rem">
+        <button id="btnCloseAbandoned" onclick="closeAbandonedGame()" class="secondary">Close this game (abandoned)</button>
+        <span class="status">Marks it done so it stops blocking Create/Resume. Use if this lobby was left open by mistake (VFTGZ, 2026-09-22).</span>
       </div>
     </div>
   </section>
@@ -245,7 +258,7 @@
 <!-- supabase-js v2 UMD from jsdelivr, pinned, same tag as the ranch console -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
 <script src="config.js?v=d9a9a8b126"></script>
-<script src="engine-powder.js?v=c5886493aa"></script>
+<script src="engine-powder.js?v=6d7e4cf211"></script>
 <script src="recap.js?v=779a527f5f"></script>
 <script>
 'use strict';
@@ -431,7 +444,66 @@ function decisionActuallyTaken(r) {
 // ==========================================================================
 // ---- Create / Resume ----
 // ==========================================================================
+// 2026-09-22 (VFTGZ/FLCRP bug): GAME_ID used to live only in memory, so a reload or a second
+// click on Create minted a brand-new game and orphaned a lobby that already had teams seated
+// (VFTGZ sat 8 teams, never left lobby; FLCRP was created 20s later and 3 teams never got in).
+// Persist the current admin game so a reload restores it, and gate Create behind a check for an
+// already-open game (plus a debounce so a double click can't itself mint two games).
+const ADMIN_GAME_KEY = 'powder_admin_game_v1';
+function saveAdminGame() {
+  try { localStorage.setItem(ADMIN_GAME_KEY, JSON.stringify({ gameId: GAME_ID, joinCode: JOIN_CODE, at: Date.now() })); } catch (e) {}
+}
+function clearAdminGame() {
+  try { localStorage.removeItem(ADMIN_GAME_KEY); } catch (e) {}
+}
+function loadAdminGame() {
+  try { return JSON.parse(localStorage.getItem(ADMIN_GAME_KEY) || 'null'); } catch (e) { return null; }
+}
+// An "open" game is one still in play: not done, not ended. Checks the in-memory game first
+// (covers the double-click case), then whatever was saved from a previous load.
+async function findOpenAdminGame() {
+  if (GAME_ID) {
+    const { data } = await supa.from('powder_games').select('*').eq('id', GAME_ID).limit(1);
+    if (data && data.length && data[0].status !== 'done' && data[0].phase !== 'ended') return data[0];
+  }
+  const saved = loadAdminGame();
+  if (saved && saved.gameId && saved.gameId !== GAME_ID) {
+    const { data } = await supa.from('powder_games').select('*').eq('id', saved.gameId).limit(1);
+    if (data && data.length && data[0].status !== 'done' && data[0].phase !== 'ended') return data[0];
+  }
+  return null;
+}
+let PENDING_OPEN_GAME = null;
+async function showOpenGamePrompt(g) {
+  const { data: teams } = await supa.from('powder_teams').select('id, is_ai').eq('game_id', g.id);
+  const seated = (teams || []).filter(t => !t.is_ai).length;
+  document.getElementById('openGamePromptText').textContent =
+    'A game with code ' + g.join_code + ' and ' + seated + ' team' + (seated === 1 ? '' : 's') + ' seated is still open.';
+  document.getElementById('openGamePrompt').style.display = '';
+  PENDING_OPEN_GAME = g;
+}
+document.getElementById('btnResumeOpen').addEventListener('click', async () => {
+  document.getElementById('openGamePrompt').style.display = 'none';
+  const g = PENDING_OPEN_GAME; PENDING_OPEN_GAME = null;
+  if (g) await resumeGameById(g.id);
+});
+document.getElementById('btnCreateAnyway').addEventListener('click', async () => {
+  document.getElementById('openGamePrompt').style.display = 'none';
+  PENDING_OPEN_GAME = null;
+  await doCreateGame();
+});
+
+let creatingGame = false;   // debounce: a second click while a create is in flight is a no-op
 async function createGame() {
+  if (creatingGame) return;
+  const existing = await findOpenAdminGame();
+  if (existing) { await showOpenGamePrompt(existing); return; }
+  await doCreateGame();
+}
+
+async function doCreateGame() {
+  if (creatingGame) return;
+  creatingGame = true;
   document.getElementById('btnCreate').disabled = true;
   JOIN_CODE = randCode();
   const seed = Math.floor(Math.random() * 900000000) + 100000000;
@@ -452,9 +524,10 @@ async function createGame() {
   const { data, error } = await supa.from('powder_games').insert({
     join_code: JOIN_CODE, status: 'lobby', phase: 'lobby', season: 0, world: WORLD,
   }).select().single();
-  if (error) { msg('Error creating game: ' + error.message, 'err'); document.getElementById('btnCreate').disabled = false; return; }
+  if (error) { msg('Error creating game: ' + error.message, 'err'); document.getElementById('btnCreate').disabled = false; creatingGame = false; return; }
   GAME_ID = data.id;
   CUR_SEASON = 0;
+  saveAdminGame();
 
   await logDecisionForSeasonNum(null, 0, 'game_created', { join_code: JOIN_CODE, seed });
 
@@ -466,16 +539,30 @@ async function createGame() {
   subscribeToTeams();
   startPolling();
   renderLobbySeats();
+  creatingGame = false;
 }
 
 async function resumeGame() {
   const { data, error } = await supa.from('powder_games').select('*').order('created_at', { ascending: false }).limit(1);
   if (error) { msg('Resume failed: ' + error.message, 'err'); return; }
   if (!data || !data.length) { msg('No game found to resume. Create one first.', 'err'); return; }
-  const g = data[0];
+  await applyResumedGame(data[0]);
+}
+
+// 2026-09-22 (VFTGZ/FLCRP bug): resume a SPECIFIC game (by id), used by the open-game prompt and
+// by the silent restore-on-load, as opposed to resumeGame() above which always grabs the newest one.
+async function resumeGameById(id, silent) {
+  const { data, error } = await supa.from('powder_games').select('*').eq('id', id).limit(1);
+  if (error || !data || !data.length) { if (!silent) msg('Resume failed.', 'err'); return false; }
+  await applyResumedGame(data[0], silent);
+  return true;
+}
+
+async function applyResumedGame(g, silent) {
   GAME_ID = g.id; JOIN_CODE = g.join_code; WORLD = g.world || {};
   applyWorldRoster();
   CUR_SEASON = g.season || 0;
+  saveAdminGame();
   document.getElementById('joinCodeDisplay').textContent = JOIN_CODE;
   showHeaderCode();
   document.getElementById('joinCodeBox').style.display = '';
@@ -499,7 +586,22 @@ async function resumeGame() {
     showSection('secLobby');
     renderLobbySeats();
   }
-  msg('Resumed game ' + JOIN_CODE + ' at phase: ' + g.phase + ' (season ' + (CUR_SEASON + 1) + ').', 'ok');
+  if (!silent) msg('Resumed game ' + JOIN_CODE + ' at phase: ' + g.phase + ' (season ' + (CUR_SEASON + 1) + ').', 'ok');
+}
+
+// 2026-09-22 (VFTGZ bug): a lobby the instructor abandoned (created a new game instead of
+// resuming) has no other way to be closed out. This just marks it done/ended so it stops
+// counting as "still open" for the createGame() prompt; it does not touch any team or decision
+// rows. NEVER call this against a live game from inside a session - it is a click-only affordance.
+async function closeAbandonedGame() {
+  if (!GAME_ID) return;
+  document.getElementById('btnCloseAbandoned').disabled = true;
+  const { error } = await supa.from('powder_games').update({ status: 'done', phase: 'ended' }).eq('id', GAME_ID);
+  if (error) { msg('Could not close the game: ' + error.message, 'err'); document.getElementById('btnCloseAbandoned').disabled = false; return; }
+  clearAdminGame();
+  msg('Game ' + JOIN_CODE + ' closed. Create or resume another when ready.', 'ok');
+  GAME_ID = null; JOIN_CODE = null;
+  showSection('secCreate');
 }
 
 function seasonLabel() {
@@ -685,11 +787,13 @@ function tickClock() {
 async function autoLockExpiredTeams() {
   if (!GAME_ID) return;
   const [{ data: teams }, { data: decs }] = await Promise.all([
-    supa.from('powder_teams').select('id, seat_index, is_ai').eq('game_id', GAME_ID),
+    supa.from('powder_teams').select('id, seat_index, is_ai, state').eq('game_id', GAME_ID),
     supa.from('powder_decisions').select('team_id').eq('game_id', GAME_ID).eq('season', CUR_SEASON).eq('kind', 'season_submitted'),
   ]);
   const submitted = new Set((decs || []).map(d => d.team_id));
-  const toLock = (teams || []).filter(t => !t.is_ai && t.seat_index < TEAM_SEATS && !submitted.has(t.id));
+  // a sold or bankrupt seat is out of the game: never auto-lock it, it has nothing to submit
+  const toLock = (teams || []).filter(t => !t.is_ai && t.seat_index < TEAM_SEATS && !submitted.has(t.id)
+    && !(t.state && (t.state.owner != null || t.state.bankrupt)));
   for (const t of toLock) {
     // Writes a MARKER, not a decision. If this wrote a season_submitted row it would be read
     // back at resolve as a real team entry, which would reintroduce a second copy of the
@@ -719,12 +823,17 @@ async function refreshBoard() {
 
   const tbody = document.getElementById('tbodyBoard');
   tbody.innerHTML = '';
-  const humanTeamSeats = TEAMS.filter(t => !t.is_ai && t.seat_index < TEAM_SEATS);
+  // A sold (owner != null) or bankrupt seat is out of the game (2026-09-22, game FLCRP): it never
+  // submits again, so it must not count toward "still deciding" or block a season from advancing.
+  const outOfPlay = t => !!(t.state && (t.state.owner != null || t.state.bankrupt));
+  const humanTeamSeats = TEAMS.filter(t => !t.is_ai && t.seat_index < TEAM_SEATS && !outOfPlay(t));
   TEAMS.forEach(t => {
     const fixed = FIXED_NAME[t.seat_index];
     let badge;
     if (fixed) badge = '<span class="tag tag-ai">AI, permanent</span>';
-    else if (t.is_ai) badge = '<span class="tag tag-ai">AI</span>';
+    else if (!t.is_ai && outOfPlay(t)) {
+      badge = t.state.bankrupt ? '<span class="tag tag-sold">BANKRUPT</span>' : '<span class="tag tag-sold">SOLD</span>';
+    } else if (t.is_ai) badge = '<span class="tag tag-ai">AI</span>';
     else {
       const dec = submitted.get(t.id);
       badge = dec
@@ -1168,6 +1277,17 @@ function startPolling() {
     if (boardVisible) { refreshBoard(); refreshDealsAdmin(); }
   }, POLL_MS);
 }
+
+// ---- Silent restore on load (2026-09-22, VFTGZ/FLCRP bug) ----
+// A page reload used to land back on the blank Create screen with no memory of the open game.
+// If a still-open game was saved from a previous load, restore it quietly; a done/ended save is
+// dropped so a genuinely finished game never blocks a fresh Create.
+(async function restoreAdminGameOnLoad() {
+  const saved = loadAdminGame();
+  if (!saved || !saved.gameId) return;
+  const ok = await resumeGameById(saved.gameId, true);
+  if (!ok) clearAdminGame();
+})();
 </script>
 </body>
 </html>

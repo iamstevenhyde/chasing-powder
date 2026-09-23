@@ -145,6 +145,10 @@ const CONFIG = {
   ACQ_BASE: 6,                     // independent hill ask price = ACQ_CAP_W*cap + ACQ_BASE
   ACQ_MIN: 8,                      // floor on any agreed acquisition price
   NEG_CASH_SEASONS: 2,             // seasons in negative cash before a table is for sale without consent
+  // 2026-09-22 (Steven, live game FLCRP): one more season of unrescued negative cash after that (i.e.
+  // NEG_CASH_SEASONS+1 running) and the table goes BANKRUPT - out of the game, decisions frozen, its
+  // score no longer changes. This gives exactly one season where forSale is visible for a buyer to
+  // rescue it (settleAcquisition resets negCashRun to 0) before bankruptcy fires.
   SCALE_MOVE_W: 0.10,              // group scale: move-fraction bonus per (groupCap/ownCap - 1)
   SCALE_MOVE_MAX: 0.18,            // cap on that bonus
   SCALE_CROWD_SHIELD: 0.60,        // at the cap, rival crowding bites this much less
@@ -576,7 +580,7 @@ function initGameState(assignment, seed, env) {
     bets: { snowmaking: false, megapass: false, exclusivity: false, costRedesign: false, valuesBrand: false },
     _buyBet: null, _betSpend: 0,
     // multi-team state (2026-09-18): all inert until a deal, acquisition or consortium is used
-    owner: null, divisions: [], isHill: false, askPrice: null, negCashRun: 0, forSale: false,
+    owner: null, divisions: [], isHill: false, askPrice: null, negCashRun: 0, forSale: false, bankrupt: false,
     dayPassPrice: 0.5, lodgingRate: 0.5, passMix: 0.5, price: 1.0, profit: 0,
     stageBias: (mulberry32((((seed * 131) ^ (i * 977)) >>> 0))() - 0.5) * 0.5,
     edges: [], renewSeasons: [],
@@ -631,6 +635,16 @@ function applyDecision(r, d) {
   // Deliberately NOT copied: RENEWER's `r.cap = Math.min(r.cap, 79)` clamp, which is that one
   // archetype's policy quirk rather than part of the shared rules.
   r.cap += (r._opsCost - 8) * CONFIG.CAP_GROWTH_MULT;
+}
+
+// A seat that is no longer in play (owned by another team, or bankrupt) submits no further decisions.
+// It idles: neutral running cost (no cap growth or shrink), zero new lever spend, no bets, hires or
+// acquisitions. 2026-09-22 (game FLCRP bug fix).
+function idleOutOfPlay(r) {
+  r._opsCost = 8;
+  r._spendRuns = 0; r._spendLodging = 0; r._spendEvents = 0; r._spendMkt = 0;
+  r._buyBet = null; r._betSpend = 0; r._leaveBet = null; r._acquire = null;
+  r._hire = 0; r._pendingHire = 0;
 }
 
 // ---------- multi-team deals (2026-09-18) ----------
@@ -732,7 +746,25 @@ function stepSeason(st, decisionsBySeat, deals) {
 
     // a seat with a supplied decision uses it; every other seat is decided by the scripted AI,
     // at the same call site, in the same order, drawing from the same RNG sequence as before.
-    for (const r of resorts) { if (D[r.i]) applyDecision(r, D[r.i]); else decide(r, s, inflected, core, resorts); }
+    // 2026-09-22 (game FLCRP, Steven overrules the old "bought resorts keep their seat" comment that
+    // used to sit here): once a resort is owned by another team, or bankrupt, it is DONE - its
+    // decisions are ignored (own or an incoming payload's) and it idles instead. Its assets/score
+    // still fold into its buyer exactly as before (settleAcquisition / groupScore, untouched).
+    for (const r of resorts) {
+      if (r.owner != null || r.bankrupt) { idleOutOfPlay(r); continue; }
+      if (D[r.i]) applyDecision(r, D[r.i]); else decide(r, s, inflected, core, resorts);
+    }
+    // negative-cash teams cannot commit new discretionary spend until back above zero (2026-09-22,
+    // NEG_CASH bug): applies after decisions land so it overrides both a human payload and the AI's
+    // own decide() alike. Running costs (capacityDial/_opsCost) and price stand; only new investment,
+    // bets and acquisitions are blocked.
+    for (const r of resorts) {
+      if (r.owner != null || r.bankrupt) continue;
+      if (r.cash < 0) {
+        r._spendRuns = 0; r._spendLodging = 0; r._spendEvents = 0; r._spendMkt = 0;
+        r._buyBet = null; r._betSpend = 0; r._acquire = null;
+      }
+    }
 
     // strategic bet purchase (mission item 2): a one-time commitment, applied THIS season so its pull
     // and board effects show up immediately (matches the bets' own "instant" framing, e.g. Mega-Pass).
@@ -967,11 +999,23 @@ function stepSeason(st, decisionsBySeat, deals) {
       const opsCost = r._opsCost + CONFIG.OPS_CONVEX * push * push;
       const runCost = opsCost + CONFIG.fixedCost + r._payroll - (r.bets && r.bets.costRedesign ? CONFIG.COST_REDESIGN_SAVING : 0);
       const leverSpend = (r._spendRuns || 0) + (r._spendLodging || 0) + (r._spendEvents || 0) + (r._spendMkt || 0) + (r._betSpend || 0);
-      const profit = revenue - runCost - CONFIG.capCarry * r.cap - (r._repoCost || 0) - r._warCost - (r._moveCost || 0) - leverSpend + (r._dealCash || 0);
+      // a bankrupt table is out of the game: its cash/profit are frozen (no further P&L), so its
+      // score stops changing (2026-09-22). It still runs through this block for array-index parity
+      // with fieldProfit/edges below.
+      let profit = revenue - runCost - CONFIG.capCarry * r.cap - (r._repoCost || 0) - r._warCost - (r._moveCost || 0) - leverSpend + (r._dealCash || 0);
+      if (r.bankrupt) profit = 0;
       r.cash += profit; r.profit += profit;
-      // two seasons in the red and the table is for sale without consent (a division is never resold)
-      r.negCashRun = r.cash < 0 ? (r.negCashRun || 0) + 1 : 0;
-      r.forSale = r.owner == null && !r.isHill && r.negCashRun >= CONFIG.NEG_CASH_SEASONS;
+      // two seasons in the red and the table is for sale without consent (a division is never resold);
+      // one further unrescued negative season after that (NEG_CASH_SEASONS+1) and it goes bankrupt -
+      // out of the game, decisions frozen (idleOutOfPlay above), score frozen (just above). A frozen
+      // bankrupt table's cash never moves again, so negCashRun/forSale are frozen with it.
+      if (!r.bankrupt) {
+        r.negCashRun = r.cash < 0 ? (r.negCashRun || 0) + 1 : 0;
+        r.forSale = r.owner == null && !r.isHill && r.negCashRun >= CONFIG.NEG_CASH_SEASONS;
+        if (r.owner == null && !r.isHill && r.negCashRun >= CONFIG.NEG_CASH_SEASONS + 1) {
+          r.bankrupt = true; r.forSale = false;
+        }
+      }
       // cumulative build ledger for the team client's mountain view (display only; nothing reads it)
       if (!r.built) r.built = { runs: 0, lodging: 0, events: 0, marketing: 0 };
       r.built.runs += r._spendRuns || 0; r.built.lodging += r._spendLodging || 0;
